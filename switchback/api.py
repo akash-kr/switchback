@@ -50,11 +50,18 @@ def _main() -> int:
                 _k = _k.strip()
                 if _k and _k not in _os.environ:
                     _os.environ[_k] = _v.strip()
+    usage = ("usage: switchback <url> [<url> ...]\n"
+             "       switchback --search <query ...>\n"
+             "       (or: python -m switchback <url> ...)")
+    # --help/-h is an explicit request: usage to stdout, exit 0 (don't treat it
+    # as a URL to scrape). Check before any work so it stays fast and side-effect-free.
+    if any(a in ("--help", "-h") for a in sys.argv[1:]):
+        print(usage)
+        return 0
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     setup_logs()  # also ship logs to the OTLP backend when configured
     if len(sys.argv) < 2:
-        print("usage: python -m switchback.api <url> [<url> ...]\n"
-              "       python -m switchback.api --search <query ...>", file=sys.stderr)
+        print(usage, file=sys.stderr)
         return 2
     if sys.argv[1] == "--search":
         hits = search(" ".join(sys.argv[2:]))
