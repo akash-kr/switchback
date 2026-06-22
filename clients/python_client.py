@@ -61,7 +61,7 @@ def _service_up() -> bool:
 
 def _cli_scrape(urls: list[str]) -> list[dict]:
     proc = subprocess.run(
-        [sys.executable, "-m", "engine", *urls],
+        [sys.executable, "-m", "switchback", *urls],
         cwd=ENGINE_DIR, capture_output=True, text=True,
     )
     if proc.returncode not in (0, 1):  # 1 == "no successes", still valid JSON ([])
