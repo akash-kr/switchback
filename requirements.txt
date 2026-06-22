@@ -1,0 +1,10 @@
+# Dependencies are declared in pyproject.toml. Install the package instead:
+#
+#   pip install -e .                      # core: normalization + cheap tiers (0/1/2) + search
+#   pip install -e ".[server]"            # + HTTP service (engine.server)
+#   pip install -e ".[browser]"           # + Tier 3 stealth Chromium (then: patchright install chromium)
+#   pip install -e ".[tracing]"           # + OTel → any OTLP backend
+#   pip install -e ".[all]"               # everything (browser, camoufox, firecrawl, server, tracing)
+#
+# This file is kept so existing `pip install -r requirements.txt` flows still work.
+-e .[all]

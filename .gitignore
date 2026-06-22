@@ -1,0 +1,27 @@
+state/
+speed_runs/
+speed_runs_backup_*/
+graphify-out/
+__pycache__/
+*.pyc
+.venv/
+.env
+!.env.example
+
+# Secrets — exported login/session cookies must never be committed.
+*cookies*.txt
+
+# Local run artifacts (benchmarks, soak/scan outputs) — never part of the package.
+*.csv
+*.log
+dist/
+build/
+*.egg-info/
+
+# Generated reports / scratch artifacts.
+*.html
+benchmark_results.json
+feature_impact.json
+
+# macOS
+.DS_Store

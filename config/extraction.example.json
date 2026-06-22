@@ -1,0 +1,10 @@
+{
+  "_comment": "Per-domain extraction prefs. Copy to extraction.json (or point SCRAPER_EXTRACTION_FILE at it). Keyed by exact host (FQDN). 'selector' scopes to a content node (first match wins); 'drop' removes extra CSS selectors before converting to markdown. Keys starting with '_' are ignored.",
+  "www.example.com": {
+    "selector": "article.main-content",
+    "drop": [".advertisement", ".related-stories", ".newsletter-signup"]
+  },
+  "blog.example.org": {
+    "selector": "main .post-body"
+  }
+}

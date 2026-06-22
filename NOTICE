@@ -1,0 +1,34 @@
+switchback
+Copyright (c) 2026 Akash Kodavuru
+Licensed under the MIT License (see LICENSE).
+
+This product depends on third-party components, each under its own license.
+They are installed via pip and are NOT bundled or redistributed in this
+repository — no upstream source or full license texts are vendored here. All
+dependencies use permissive licenses (MIT / BSD-3-Clause / Apache-2.0), which
+are compatible with this project's MIT license.
+
+Third-party components
+----------------------
+
+MIT
+  markdownify        HTML -> Markdown normalization
+  beautifulsoup4     HTML parsing / normalization
+  curl_cffi          tier1: plain HTTP with TLS impersonation
+  cloudscraper       tier2: Cloudflare / anti-bot challenge solver
+  camoufox           tier3b: Firefox stealth (optional)
+  firecrawl-py       tier4: paid last-resort scrape API (optional)
+  fastapi            HTTP service (optional)
+
+BSD-3-Clause
+  pypdf              PDF -> text extraction (tier1 PDFs)
+  uvicorn            ASGI server for the HTTP service (optional)
+
+Apache-2.0
+  requests           HTTP client
+  patchright         tier3: stealth headless Chromium (optional)
+  opentelemetry-sdk                            tracing -> any OTLP backend (optional)
+  opentelemetry-exporter-otlp-proto-grpc       OTLP trace/log export (optional)
+
+Full license texts are available with each package distribution (e.g. in its
+`*.dist-info` directory after install) and from each project's repository.

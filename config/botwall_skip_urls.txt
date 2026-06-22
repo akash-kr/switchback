@@ -1,0 +1,11 @@
+# botwall_skip_urls.txt — manually exclude specific URLs from scraping.
+#
+# One URL per line. Anything after ' #' is treated as the reason and
+# shown in logs and the exclusion report.
+# Blank lines and lines starting with '#' are ignored.
+#
+# Override the file path with:  SCRAPER_BOTWALL_SKIP_URLS_FILE=/path/to/file
+#
+# Examples:
+#   https://www.example.com/subscriber-only-article   # hard paywall
+#   https://paywalled-site.com/locked/story-456       # always 403

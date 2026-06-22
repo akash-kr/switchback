@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    name: build & import (py${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install (core only)
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+
+      # The full test_suite exercises live network + stealth browser tiers, so it
+      # can't run on a vanilla CI runner. CI verifies the package builds and the
+      # public import surface stays intact; run tests/test_suite.py locally.
+      - name: Smoke-test public API
+        run: |
+          python -c "from switchback import scrape, scrape_detailed, search; print('import OK')"
+          python -m switchback --help || true
+
+      - name: Build distribution
+        run: |
+          pip install build
+          python -m build
+
+      - name: Check distribution metadata
+        run: |
+          pip install twine
+          twine check dist/*

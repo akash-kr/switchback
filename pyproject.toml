@@ -1,0 +1,77 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "switchback"
+version = "0.1.0"
+description = "One cost-ordered scrape cascade (HTTP → stealth browser → paid), shared by every tool."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Akash Kodavuru", email = "akash@theaklabs.com" }]
+keywords = ["scraping", "crawler", "cloudflare", "markdown", "cascade", "anti-bot", "stealth"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Internet :: WWW/HTTP",
+    "Topic :: Text Processing :: Markup :: Markdown",
+    "Typing :: Typed",
+]
+
+# Core: normalization + the cheap tiers (0/1) + search. The heavy/paid/optional
+# tiers and the tracing/server bits are extras so a minimal install stays small.
+# Every tier imports its deps lazily and a missing one just counts as a tier miss,
+# so the engine runs with any subset installed.
+dependencies = [
+    "markdownify",
+    "beautifulsoup4",
+    "pypdf",
+    "requests",
+    "curl_cffi",      # tier1: TLS-impersonating HTTP
+]
+
+[project.optional-dependencies]
+# tier2: Cloudflare solver. For the full v3 JS-VM + Turnstile + stealth + captcha
+# hooks, install the Enhanced Edition 3.x fork (PyPI's `cloudscraper` is frozen at
+# 1.2.71 = v1/v2, no stealth). PyPI forbids direct-URL deps in a published package,
+# so the fork can't be pinned here — install it alongside:
+#   pip install "cloudscraper @ git+https://github.com/VeNoMouS/cloudscraper@3.0.0"
+cloudflare = ["cloudscraper"]            # plain PyPI fallback; see note above for 3.x
+browser = ["patchright"]                 # tier3: stealth headless Chromium
+camoufox = ["camoufox[geoip]"]           # tier3b: Firefox stealth (geoip: match locale/tz to proxy IP)
+firecrawl = ["firecrawl-py"]             # tier4: paid last-resort API
+server = ["fastapi", "uvicorn"]          # HTTP service (switchback.server) + /metrics + /traces
+tracing = [                              # OTel → any OTLP backend
+    "opentelemetry-sdk",
+    "opentelemetry-exporter-otlp-proto-grpc",
+]
+all = [
+    "cloudscraper", "patchright", "camoufox[geoip]", "firecrawl-py",
+    "fastapi", "uvicorn",
+    "opentelemetry-sdk", "opentelemetry-exporter-otlp-proto-grpc",
+]
+dev = ["pytest"]
+
+[project.scripts]
+switchback = "switchback.api:_main"
+switchback-server = "switchback.server:main"
+
+[project.urls]
+Homepage = "https://github.com/akash-kr/switchback"
+Repository = "https://github.com/akash-kr/switchback"
+Issues = "https://github.com/akash-kr/switchback/issues"
+Changelog = "https://github.com/akash-kr/switchback/blob/main/CHANGELOG.md"
+
+[tool.setuptools.packages.find]
+include = ["switchback*"]
+
+[tool.setuptools.package-data]
+switchback = ["py.typed"]

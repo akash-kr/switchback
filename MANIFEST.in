@@ -1,0 +1,12 @@
+include LICENSE
+include NOTICE
+include README.md
+include CHANGELOG.md
+include CONTRIBUTING.md
+include SECURITY.md
+include .env.example
+include switchback/py.typed
+recursive-include config *.txt *.json
+graft clients
+graft deploy
+prune tests
