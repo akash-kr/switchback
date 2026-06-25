@@ -9,6 +9,7 @@ from __future__ import annotations
 import os
 import threading
 
+from ..normalize import active_format, render
 from ..policy.gates import check
 
 NAME = "tier4_firecrawl"
@@ -19,12 +20,18 @@ def disabled() -> bool:
     return bool(os.getenv("SCRAPER_DISABLE_FIRECRAWL"))
 
 
-def _scrape(url: str) -> str:
+def _scrape(url: str, fmt: str) -> str:
     from firecrawl import Firecrawl
     app = Firecrawl(api_key=os.environ["FIRECRAWL_API_KEY"])
-    doc = app.scrape(url, formats=["markdown"])
+    if fmt == "markdown":
+        doc = app.scrape(url, formats=["markdown"])
+        d = doc.model_dump() if hasattr(doc, "model_dump") else (doc if isinstance(doc, dict) else {})
+        return check(url, (d.get("markdown") or "").strip())
+    # Non-default formats: fetch HTML and derive every shape through normalize, so
+    # html / html_selectors / markdown_trimmed match the rest of the cascade.
+    doc = app.scrape(url, formats=["html"])
     d = doc.model_dump() if hasattr(doc, "model_dump") else (doc if isinstance(doc, dict) else {})
-    return check(url, (d.get("markdown") or "").strip())
+    return check(url, render(d.get("html") or "", base_url=url, fmt=fmt))
 
 
 def fetch(url: str) -> str:
@@ -32,11 +39,13 @@ def fetch(url: str) -> str:
     # the calling thread, which then makes a later sync-Playwright browser tier in
     # the same batch raise "Sync API inside the asyncio loop". A worker thread
     # confines that loop so the browser tiers stay usable across a multi-URL run.
+    # active_format() is thread-local, so read it here (main thread) and pass it in.
     box: dict = {}
+    fmt = active_format()
 
     def work():
         try:
-            box["md"] = _scrape(url)
+            box["md"] = _scrape(url, fmt)
         except BaseException as e:  # noqa: BLE001 — re-raised to the caller below
             box["err"] = e
 

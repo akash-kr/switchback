@@ -36,11 +36,14 @@ def enabled() -> bool:
     return _TTL_S > 0
 
 
-def _norm(url: str) -> str:
-    """Drop the fragment; everything else is significant (query strings select
-    content)."""
+def _norm(url: str, fmt: str = "markdown") -> str:
+    """Cache key: URL with the fragment dropped (query strings select content).
+    Non-default output formats are namespaced so an html result is never served
+    for a markdown request; the default `markdown` key is unprefixed, so existing
+    caches and the default path are unchanged."""
     p = urlsplit(url)
-    return urlunsplit((p.scheme, p.netloc, p.path, p.query, ""))
+    key = urlunsplit((p.scheme, p.netloc, p.path, p.query, ""))
+    return key if fmt == "markdown" else f"{fmt}\x00{key}"
 
 
 def _conn() -> sqlite3.Connection:
@@ -58,8 +61,8 @@ def _conn() -> sqlite3.Connection:
     return _CONN
 
 
-def get(url: str) -> tuple[str, str] | None:
-    """Return ``(markdown, source_method)`` for a fresh cache hit, else None."""
+def get(url: str, fmt: str = "markdown") -> tuple[str, str] | None:
+    """Return ``(content, source_method)`` for a fresh cache hit, else None."""
     if not enabled():
         return None
     conn = _conn()  # NB: acquires _LOCK itself — must be outside the lock below
@@ -67,7 +70,7 @@ def get(url: str) -> tuple[str, str] | None:
         with _LOCK:
             row = conn.execute(
                 "SELECT markdown, source_method, ts FROM cache WHERE url=?",
-                (_norm(url),)).fetchone()
+                (_norm(url, fmt),)).fetchone()
     except Exception as e:
         logger.warning(f"content_cache: read failed: {e}")
         return None
@@ -79,7 +82,7 @@ def get(url: str) -> tuple[str, str] | None:
     return markdown, source_method
 
 
-def put(url: str, markdown: str, source_method: str) -> None:
+def put(url: str, markdown: str, source_method: str, fmt: str = "markdown") -> None:
     """Store a successful scrape. No-op when disabled."""
     if not enabled():
         return
@@ -88,7 +91,7 @@ def put(url: str, markdown: str, source_method: str) -> None:
         with _LOCK:
             conn.execute("INSERT OR REPLACE INTO cache (url, markdown, source_method, ts) "
                          "VALUES (?, ?, ?, ?)",
-                         (_norm(url), markdown, source_method, time.time()))
+                         (_norm(url, fmt), markdown, source_method, time.time()))
             conn.commit()
     except Exception as e:
         logger.warning(f"content_cache: write failed: {e}")

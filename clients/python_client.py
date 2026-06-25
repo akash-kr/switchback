@@ -59,9 +59,10 @@ def _service_up() -> bool:
         return False
 
 
-def _cli_scrape(urls: list[str]) -> list[dict]:
+def _cli_scrape(urls: list[str], fmt: str | None = None) -> list[dict]:
+    flag = ["--format", fmt] if fmt else []
     proc = subprocess.run(
-        [sys.executable, "-m", "switchback", *urls],
+        [sys.executable, "-m", "switchback", *flag, *urls],
         cwd=ENGINE_DIR, capture_output=True, text=True,
     )
     if proc.returncode not in (0, 1):  # 1 == "no successes", still valid JSON ([])
@@ -69,15 +70,20 @@ def _cli_scrape(urls: list[str]) -> list[dict]:
     return json.loads(proc.stdout or "[]")
 
 
-def scrape(urls: str | list[str]) -> list[dict]:
-    """Scrape one or many URLs through the engine cascade. Successes only."""
+def scrape(urls: str | list[str], fmt: str | None = None) -> list[dict]:
+    """Scrape one or many URLs through the engine cascade. Successes only.
+
+    fmt selects the output format (markdown | markdown_trimmed | html |
+    html_selectors); None uses the engine default (markdown). For html formats the
+    content lands under a "html" key instead of "markdown"."""
     if isinstance(urls, str):
         urls = [urls]
     if not urls:
         return []
     if _service_up():
-        return _http_post("/scrape", {"urls": urls})
-    return _cli_scrape(urls)
+        payload = {"urls": urls, "format": fmt} if fmt else {"urls": urls}
+        return _http_post("/scrape", payload)
+    return _cli_scrape(urls, fmt)
 
 
 def search(query: str) -> list[dict]:

@@ -17,6 +17,7 @@ import time
 from dataclasses import dataclass, field
 
 from . import content_cache, egress, session_cache
+from .normalize import active_format, output_format_scope
 from .policy import botwall
 from .policy.gates import BotWall, RateLimited, ShortContent, classify_error, host_of
 from .tiers import TIERS, INDEX
@@ -68,8 +69,9 @@ _FAILURE_PRIORITY = {
 @dataclass
 class ScrapeResult:
     url: str
-    markdown: str
+    markdown: str       # the rendered content (format named by `format`)
     source_method: str  # tier NAME that won
+    format: str = "markdown"  # markdown | markdown_trimmed | html | html_selectors
 
 
 @dataclass
@@ -95,6 +97,7 @@ class ScrapeOutcome:
     latency_ms: int | None = None
     egress: str = "direct"         # "egress" if routed via SCRAPER_EGRESS_PROXY, else "direct"
     wire_bytes: int = 0            # bytes transferred over the network (cost basis for proxy GB)
+    format: str = "markdown"       # output format of `markdown` (the content field)
     attempts: list[TierAttempt] = field(default_factory=list)
 
 
@@ -180,7 +183,7 @@ def _run_one(url: str, db: dict) -> ScrapeOutcome:
         if botwall.is_url_skipped(url, db):
             return _skipped(url, root, "url_excluded",
                             db.get("urls", {}).get(url, {}).get("reason", ""))
-        hit = content_cache.get(url)
+        hit = content_cache.get(url, active_format())
         if hit:
             md, method = hit
             root.set(Attr.OUTCOME, "cache_hit")
@@ -188,7 +191,7 @@ def _run_one(url: str, db: dict) -> ScrapeOutcome:
             root.set(Attr.MD_LEN, len(md))
             logger.info(f"cache_hit {url} (was {method})")
             return ScrapeOutcome(url, True, markdown=md, source_method=method,
-                                 final_outcome="ok")
+                                 final_outcome="ok", format=active_format())
         # A needs_egress host runs the whole cascade in the egress scope, so the
         # tiers route through SCRAPER_EGRESS_PROXY (when set); easy hosts stay
         # direct and never spend residential bandwidth.
@@ -300,7 +303,7 @@ def _run_cascade(url, host, db, root, t0, deadline) -> ScrapeOutcome:
             sp.set(Attr.SOURCE, tier.NAME)
             sp.set(Attr.LATENCY_MS, dt)
             botwall.record(db, url, tier.NAME, "ok", md_len=len(md), latency_ms=dt)
-            content_cache.put(url, md, tier.NAME)
+            content_cache.put(url, md, tier.NAME, active_format())
             root.set(Attr.OUTCOME, "ok")
             root.set(Attr.SOURCE, tier.NAME)
             root.set(Attr.LATENCY_MS, total)
@@ -308,7 +311,8 @@ def _run_cascade(url, host, db, root, t0, deadline) -> ScrapeOutcome:
             logger.info(
                 f"{tier.NAME} OK {url} md_len={len(md)} {dt}ms (total {total}ms)")
             return ScrapeOutcome(url, True, markdown=md, source_method=tier.NAME,
-                                 final_outcome="ok", latency_ms=total, attempts=attempts)
+                                 final_outcome="ok", latency_ms=total,
+                                 format=active_format(), attempts=attempts)
 
     total = int((time.monotonic() - t0) * 1000)
     ec, sc = _dominant_failure(attempts)
@@ -323,21 +327,24 @@ def _run_cascade(url, host, db, root, t0, deadline) -> ScrapeOutcome:
                          latency_ms=total, attempts=attempts)
 
 
-def run_detailed(urls: list[str]) -> list[ScrapeOutcome]:
+def run_detailed(urls: list[str], fmt: str | None = None) -> list[ScrapeOutcome]:
     """Scrape each URL; return a full ScrapeOutcome (success or failure with the
-    per-tier cascade and a classified reason) for every URL."""
+    per-tier cascade and a classified reason) for every URL.
+
+    fmt overrides SCRAPER_OUTPUT_FORMAT for this call (None = use the default)."""
     db = botwall.load_db()
     out = []
     try:
-        for url in urls:
-            out.append(_run_one(url, db))
+        with output_format_scope(fmt):
+            for url in urls:
+                out.append(_run_one(url, db))
     finally:
         botwall.save_db(db)
         flush()
     return out
 
 
-def run(urls: list[str]) -> list[ScrapeResult]:
+def run(urls: list[str], fmt: str | None = None) -> list[ScrapeResult]:
     """Successes only (backward-compatible). Use run_detailed() for failures."""
-    return [ScrapeResult(o.url, o.markdown, o.source_method)
-            for o in run_detailed(urls) if o.ok]
+    return [ScrapeResult(o.url, o.markdown, o.source_method, o.format)
+            for o in run_detailed(urls, fmt) if o.ok]

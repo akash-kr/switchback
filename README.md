@@ -210,6 +210,7 @@ export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
 <details>
 <summary><b>Tunables</b> — budgets, timeouts, caches, backoff</summary>
 
+- `SCRAPER_OUTPUT_FORMAT` — output shape: `markdown` (default) · `markdown_trimmed` · `html` · `html_selectors` (see [Output formats](#output-formats))
 - `SCRAPER_DEADLINE_S` — per-URL budget (45s)
 - `SCRAPER_CAMOUFOX_TIMEOUT_MS` — (45000)
 - `SCRAPER_BROWSER_CONCURRENCY` — max simultaneous headless browsers (default 1)
@@ -237,6 +238,34 @@ With `SCRAPER_TRACE_SESSION=1`, each browser-tier attempt writes a Playwright
 trace zip to `state/traces/`. Manage them over HTTP — `GET /traces` (list),
 `GET /traces/{id}` (download), `DELETE /traces/{id}` — and open one with
 `playwright show-trace <zip>`. Off by default (traces are MBs each).
+
+### Output formats
+Markdown is the default and is unchanged. Pick a different shape globally with
+`SCRAPER_OUTPUT_FORMAT`, or per call:
+
+```python
+from switchback import scrape
+scrape(["https://example.com/article"])                    # markdown (default)
+scrape(["https://example.com/article"], fmt="html")        # raw HTML
+scrape(["https://example.com/article"], fmt="markdown_trimmed")
+```
+
+```bash
+switchback --format html_selectors https://example.com/article
+curl -s localhost:8799/scrape -d '{"urls":["https://example.com"],"format":"html"}'
+```
+
+| format | what you get |
+| --- | --- |
+| `markdown` | whole-page markdown (boilerplate stripped + per-domain prefs) — **default** |
+| `markdown_trimmed` | markdown with extra ad/nav/boilerplate lines removed |
+| `html` | the raw HTML exactly as fetched, untouched |
+| `html_selectors` | cleaned HTML (boilerplate strip + per-domain `drop`/`selector`), not converted |
+
+The chosen content rides in the result's `markdown` field; in the CLI/server JSON
+the key is `markdown` for markdown formats and `html` for html formats. The
+API/PDF tiers (arXiv synth, PDF→text) have no HTML, so html formats fall back to
+their text for those sources.
 
 ### Per-domain extraction
 Markdown of the whole page is the default. To scope a site to its content node or

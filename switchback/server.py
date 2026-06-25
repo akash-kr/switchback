@@ -25,15 +25,17 @@ from pydantic import BaseModel
 
 from . import session_trace
 from .api import scrape
+from .normalize import output_key
 from .reporting import build_report, domain_report
 from .search import search
 from .tracing import setup_logs
 
-app = FastAPI(title="switchback", version="0.1.0")
+app = FastAPI(title="switchback", version="0.2.0")
 
 
 class ScrapeRequest(BaseModel):
     urls: list[str]
+    format: str | None = None  # markdown (default) | markdown_trimmed | html | html_selectors
 
 
 @app.get("/healthz")
@@ -43,9 +45,12 @@ def healthz() -> dict:
 
 @app.post("/scrape")
 def scrape_endpoint(req: ScrapeRequest) -> list[dict]:
-    """Run URLs through the cascade. Returns successes only (failed URLs omitted)."""
-    return [{"url": r.url, "source_method": r.source_method, "markdown": r.markdown}
-            for r in scrape(req.urls)]
+    """Run URLs through the cascade. Returns successes only (failed URLs omitted).
+    Optional "format" selects the output shape; the content key is "markdown" for
+    markdown formats and "html" for html formats."""
+    return [{"url": r.url, "source_method": r.source_method,
+             output_key(r.format): r.markdown}
+            for r in scrape(req.urls, fmt=req.format)]
 
 
 @app.get("/search")

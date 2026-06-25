@@ -6,7 +6,15 @@ versioning while pre-1.0.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-06-25
+
 ### Added
+- **Selectable output formats** — `SCRAPER_OUTPUT_FORMAT` (or per-call
+  `scrape(fmt=...)`, CLI `--format`, `/scrape` `{"format": ...}`) selects the
+  content shape: `markdown` (default, unchanged), `markdown_trimmed` (extra
+  ad/nav/boilerplate removed), `html` (raw), or `html_selectors` (cleaned HTML
+  with per-domain `drop`/`selector` applied). Default output is byte-identical;
+  html-family results use a `html` JSON key instead of `markdown`.
 - **Challenge-type learning** — bot-walls are classified by vendor (Cloudflare,
   DataDome, Akamai, PerimeterX, Incapsula, Google) and counted per host in the
   botwall DB; the vendor is attached to each event and OTel span (`scrape.challenge`).
