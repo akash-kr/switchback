@@ -233,6 +233,42 @@ wall, the engine calls the hook once, persists the returned cookies per host, an
 overlays them on every tier (and future runs), then re-runs that URL on a fresh
 budget. The hook owns the site-specific login mechanics; the engine stays generic.
 
+### Testing the NYT session flow
+`tests/test_session_nyt.py` is an integration suite for the session/cookie
+machinery, exercised end-to-end against **nytimes.com**. It has two layers:
+
+- **Machinery tests** (always run, offline, no credentials): cookies.txt
+  injection, cf_clearance reuse + TTL eviction, overlay precedence
+  (auth < refreshed-login < cf cache), the login-hook refresh path, egress-scope
+  isolation, and the `SCRAPER_DISABLE_SESSION_CACHE` switch.
+- **Live NYT flow** (skipped unless credentials are present): real login →
+  persisted session → gated content reachable *with* a session and not without,
+  and session reuse skipping re-login within the TTL.
+
+Run the suite:
+
+```bash
+pip install -e ".[browser]" && patchright install chromium   # for the live login
+pip install pytest
+pytest tests/test_session_nyt.py -v
+```
+
+**To run the live flow, add your NYT credentials** — copy `.env.example` to
+`.env` (gitignored) and fill in **both** vars:
+
+```bash
+cp .env.example .env
+# then edit .env:
+NYT_USERNAME=you@example.com
+NYT_PASSWORD=your-password
+```
+
+The test fixtures load `.env` automatically. With the vars blank, the live tests
+skip and CI stays green; with both set, they log in and run the real flow. The
+login itself is driven by `tests/nyt_login.py` (the `SCRAPER_LOGIN_HOOK` target)
+— if NYT changes its login form, update the selectors there. Credentials live
+only in your local `.env`; never commit them or paste them anywhere else.
+
 ### Session traces
 With `SCRAPER_TRACE_SESSION=1`, each browser-tier attempt writes a Playwright
 trace zip to `state/traces/`. Manage them over HTTP — `GET /traces` (list),
