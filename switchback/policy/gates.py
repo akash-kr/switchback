@@ -156,6 +156,16 @@ class ShortContent(RuntimeError):
     """Content fetched but below the quality gate — treated as a tier miss."""
 
 
+class Unavailable(RuntimeError):
+    """A tier can't run because an optional dependency is missing, the wrong
+    version, or not installed yet (e.g. cloudscraper 1.2.71 instead of the 3.x
+    stealth fork; patchright's Chromium not downloaded yet during an async
+    cold-start install). Distinct from a tier *failure*: the tier never got to
+    attempt the URL. Surfaced as its own `unavailable` outcome so an environment
+    problem isn't masked as a generic error or a site bot-wall. The message
+    carries the exact fix (e.g. `patchright install chromium`)."""
+
+
 class BotWall(RuntimeError):
     """Content fetched but it's a bot-wall / block interstitial (e.g. Cloudflare
     "Just a moment...") rather than the real page — treated as a tier miss so the

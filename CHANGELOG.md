@@ -6,6 +6,30 @@ versioning while pre-1.0.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-06-27
+
+### Added
+- **`unavailable` tier outcome** — when a tier's optional dependency is missing,
+  the wrong version, or not installed yet (frozen PyPI `cloudscraper` instead of
+  the 3.x stealth fork; patchright's Chromium not downloaded during an async
+  cold-start install), the tier now fails fast (~0ms) with a distinct
+  `unavailable` outcome carrying the exact install command, logged once per tier.
+  It ranks above bot-wall in the verdict, so an environment problem is no longer
+  masked as `botwall` — and a missing Tier 2 dependency no longer burns the
+  per-URL solve budget before the browser tier runs.
+- **`switchback --doctor`** — preflight tier-readiness check (doubles as a
+  healthcheck: exit 0 when the capable tiers are ready). Reports whether
+  cloudscraper is the stealth-capable 3.x fork, patchright + Chromium are
+  installed, Camoufox/Node are present, and Firecrawl is configured. Built for
+  cold-start deploys where the browser is installed by a background thread after
+  boot.
+
+### Docs
+- README **Production / cold-start deployment** section and a `.env.example`
+  Tier 2 block: install `patchright install chromium` in the post-boot step, the
+  cloudscraper 3.x fork requirement, Node.js for Tier 2 concurrency, and the
+  `SCRAPER_CLOUDSCRAPER_TIMEOUT_S` budget knob.
+
 ## [0.2.0] - 2026-06-25
 
 ### Added

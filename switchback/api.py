@@ -55,6 +55,7 @@ def _main() -> int:
                     _os.environ[_k] = _v.strip()
     usage = ("usage: switchback [--format FMT] <url> [<url> ...]\n"
              "       switchback --search <query ...>\n"
+             "       switchback --doctor\n"
              "       (or: python -m switchback <url> ...)\n"
              "  FMT: markdown (default) | markdown_trimmed | html | html_selectors")
     # --help/-h is an explicit request: usage to stdout, exit 0 (don't treat it
@@ -62,6 +63,10 @@ def _main() -> int:
     if any(a in ("--help", "-h") for a in sys.argv[1:]):
         print(usage)
         return 0
+    # --doctor: preflight tier-readiness report (no scrape). Side-effect-free.
+    if "--doctor" in sys.argv[1:]:
+        from .doctor import report
+        return report()
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     setup_logs()  # also ship logs to the OTLP backend when configured
     if len(sys.argv) < 2:

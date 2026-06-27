@@ -19,7 +19,8 @@ from dataclasses import dataclass, field
 from . import content_cache, egress, session_cache
 from .normalize import active_format, output_format_scope
 from .policy import botwall
-from .policy.gates import BotWall, RateLimited, ShortContent, classify_error, host_of
+from .policy.gates import (BotWall, RateLimited, ShortContent, Unavailable,
+                           classify_error, host_of)
 from .tiers import TIERS, INDEX
 from .tracing import Attr, flush, span
 
@@ -58,12 +59,20 @@ _NON_FAILURE = ("ok", "not_applicable", "disabled")
 # config error (e.g. Firecrawl with no API key → "error"), so the verdict points
 # at the actual blocker rather than the last thing that happened to throw.
 _FAILURE_PRIORITY = {
+    # A missing/old/not-yet-installed tier dependency is an operator-fixable
+    # environment problem; rank it above site walls so it surfaces as the verdict
+    # instead of being masked as "botwall" when the capable tiers can't run.
+    "unavailable": 6,
     "botwall": 5, "http_block": 5,
     "rate_limited": 4, "short_content": 4,
     "timeout": 3, "connection": 3,
     "http_error": 2,
     "error": 1,
 }
+
+# Tiers whose dependency we've already warned about this process — the install
+# hint is logged once at WARNING, not per-URL across a whole batch.
+_unavail_warned: set[str] = set()
 
 
 @dataclass
@@ -280,6 +289,21 @@ def _run_cascade(url, host, db, root, t0, deadline) -> ScrapeOutcome:
                 _record_failure(sp, attempts, db, url, tier.NAME, "rate_limited", e, 429, dt)
                 transient += 1
                 _maybe_backoff(transient, deadline)
+                continue
+            except Unavailable as e:
+                # Tier dependency missing/old/not-installed-yet. An environment
+                # problem, not a host trait — record the attempt + trace, but
+                # don't teach botwall anything about this host, and warn once per
+                # tier with the exact fix instead of spamming every URL.
+                dt = int((time.monotonic() - ts) * 1000)
+                sp.set(Attr.OUTCOME, "unavailable")
+                sp.set(Attr.ERROR, str(e))
+                sp.set(Attr.ERROR_CLASS, "unavailable")
+                sp.set(Attr.LATENCY_MS, dt)
+                attempts.append(TierAttempt(tier.NAME, "unavailable", str(e), None, dt))
+                if tier.NAME not in _unavail_warned:
+                    _unavail_warned.add(tier.NAME)
+                    logger.warning(f"{tier.NAME} unavailable: {e}")
                 continue
             except Exception as e:
                 dt = int((time.monotonic() - ts) * 1000)

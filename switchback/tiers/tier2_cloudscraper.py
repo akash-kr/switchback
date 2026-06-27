@@ -22,12 +22,39 @@ import threading
 from .. import egress, session_cache
 from ..egress import requests_proxies
 from ..normalize import html_to_markdown
-from ..policy.gates import check
+from ..policy.gates import Unavailable, check
 
 logger = logging.getLogger(__name__)
 
 NAME = "tier2_cloudscraper"
 PAID = False
+
+# Install hint surfaced when cloudscraper is missing or the frozen PyPI 1.2.71
+# (v1/v2, no stealth) instead of the 3.x Enhanced Edition this tier needs.
+_INSTALL_HINT = ('pip install "cloudscraper @ '
+                 'git+https://github.com/VeNoMouS/cloudscraper@3.0.0"')
+
+
+def available() -> tuple[bool, str]:
+    """Whether cloudscraper is importable *and* the stealth-capable 3.x fork.
+    Returns (ok, detail). Used by `fetch` (to fail fast with a clear reason
+    instead of wasting the solve budget) and by `switchback doctor`.
+
+    Discriminates by major version: the Enhanced Edition fork this tier needs is
+    3.x; PyPI is frozen at 1.2.71 (v1/v2, no stealth, rejects `enable_stealth`)."""
+    try:
+        import cloudscraper
+    except ImportError:
+        return False, f"cloudscraper not installed — {_INSTALL_HINT}"
+    ver = getattr(cloudscraper, "__version__", "0")
+    try:
+        major = int(ver.split(".")[0])
+    except (ValueError, AttributeError):
+        major = 0
+    if major < 3:
+        return False, (f"cloudscraper {ver} has no stealth support (frozen PyPI "
+                       f"v1/v2) — {_INSTALL_HINT}")
+    return True, f"cloudscraper {ver}"
 
 # Wall-clock cap on the whole solve. cloudscraper 3.x *attempts* interactive
 # Turnstile and can loop for minutes on a challenge it can't clear — far past the
@@ -78,6 +105,11 @@ def _interpreter_opts() -> dict:
 
 
 def _make_scraper():
+    ok, detail = available()
+    if not ok:
+        # Fail fast (~0ms) with the exact fix, rather than wasting the solve
+        # budget or surfacing a cryptic TypeError mid-cascade.
+        raise Unavailable(detail)
     import cloudscraper
     # enable_stealth / auto_refresh_on_403 are on by default in 3.x; we pass the
     # stealth tuning explicitly. No UA override: cloudscraper derives a UA (and
