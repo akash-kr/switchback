@@ -70,6 +70,16 @@ Repository = "https://github.com/akash-kr/switchback"
 Issues = "https://github.com/akash-kr/switchback/issues"
 Changelog = "https://github.com/akash-kr/switchback/blob/main/CHANGELOG.md"
 
+[tool.pytest.ini_options]
+# Put the repo root on sys.path so `tests.*` (conftest, nyt_login, _fake_hook)
+# resolve as a package — the NYT login hook is wired via SCRAPER_LOGIN_HOOK=
+# "tests.nyt_login:login" and must be importable by name.
+pythonpath = ["."]
+# tests/test_suite.py is a standalone CLI eval script (not pytest); skip it so
+# pytest doesn't try to collect its TestCase/TestResult dataclasses.
+testpaths = ["tests"]
+addopts = "--ignore=tests/test_suite.py"
+
 [tool.setuptools.packages.find]
 include = ["switchback*"]
 
