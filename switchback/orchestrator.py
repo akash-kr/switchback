@@ -60,6 +60,31 @@ def _maybe_backoff(transient_n: int, deadline: float) -> None:
         return
     time.sleep(delay)
 
+# Configurable same-tier retries. A failing tier normally falls straight through
+# to the next, more capable one; these let a tier re-attempt first. Off by default
+# (0 retries) so behaviour is unchanged until opted in. Read at call time (not
+# import) so a caller/test can set the env per run.
+#   SCRAPER_TIER_RETRIES            global extra attempts per tier (N → 1+N tries)
+#   SCRAPER_TIER_RETRIES_<TIER>     per-tier override, <TIER> = uppercased NAME
+#   SCRAPER_TIER_RETRY_ON           failure classes eligible for a retry
+_DEFAULT_RETRY_ON = "timeout,rate_limited,connection"
+
+
+def _retries_for(name: str) -> int:
+    """Extra attempts for a tier: its per-tier override, else the global default."""
+    raw = os.getenv(f"SCRAPER_TIER_RETRIES_{name.upper()}",
+                    os.getenv("SCRAPER_TIER_RETRIES", "0"))
+    try:
+        return max(0, int(raw))
+    except ValueError:
+        logger.warning(f"invalid retry count {raw!r} for {name}; using 0")
+        return 0
+
+
+def _retryable_outcomes() -> set[str]:
+    raw = os.getenv("SCRAPER_TIER_RETRY_ON", _DEFAULT_RETRY_ON)
+    return {o.strip() for o in raw.split(",") if o.strip()}
+
 # Per-attempt outcomes that aren't real failures (don't carry a failure reason).
 _NON_FAILURE = ("ok", "not_applicable", "disabled", "skipped_for_budget")
 
@@ -157,11 +182,17 @@ def _start_index(url: str, db: dict) -> int:
 
 
 def _record_failure(sp, attempts, db, url, tier_name, outcome, exc, status, dt,
-                    challenge=None):
+                    challenge=None, persist=True):
     """Annotate the span, persist to botwall, and append the attempt — for one
     failed tier attempt. Shared by every except branch so classification,
     tracing, and the event log never drift apart. `challenge` names the bot-wall
-    vendor when one was served, so the policy can learn it per host."""
+    vendor when one was served, so the policy can learn it per host.
+
+    `persist=False` is for an intermediate same-tier retry: the attempt is still
+    traced, logged, and appended (so retries are observable), but it does NOT
+    touch the policy DB — otherwise a single URL's retries would inflate the
+    self-healing failure counters (URL skip / needs_egress) and over-count misses.
+    Only the final per-tier outcome persists."""
     msg = f"{type(exc).__name__}: {exc}"
     sp.set(Attr.OUTCOME, outcome)
     sp.set(Attr.ERROR, msg)
@@ -169,10 +200,13 @@ def _record_failure(sp, attempts, db, url, tier_name, outcome, exc, status, dt,
     sp.set(Attr.CHALLENGE, challenge)
     sp.set(Attr.STATUS_CODE, status)
     sp.set(Attr.LATENCY_MS, dt)
-    botwall.record(db, url, tier_name, outcome, error=msg, latency_ms=dt,
-                   status_code=status, challenge=challenge)
+    if persist:
+        botwall.record(db, url, tier_name, outcome, error=msg, latency_ms=dt,
+                       status_code=status, challenge=challenge)
     # A wall on a host we had a cached cf_clearance for means the cookie is stale
-    # or IP-mismatched: drop it so the next attempt re-solves instead of replaying.
+    # or IP-mismatched: drop it so the next attempt (a same-tier retry or the next
+    # tier) re-solves instead of replaying. Safe on intermediate retries too — it's
+    # a cache drop, not a policy counter.
     if outcome in ("botwall", "http_block"):
         session_cache.forget(url)
     attempts.append(TierAttempt(tier_name, outcome, msg, status, dt))
@@ -305,75 +339,89 @@ def _run_cascade(url, host, db, root, t0, deadline) -> ScrapeOutcome:
                                  status_code=sc, latency_ms=total, attempts=attempts)
 
         paid = getattr(tier, "PAID", False)
-        with span(tier.NAME, **{Attr.HOST: host, Attr.TIER: tier.NAME}) as sp:
-            if paid:
-                # Count every invocation so the host can be promoted to skip.
-                botwall.record(db, url, tier.NAME, "firecrawl_used")
-            ts = time.monotonic()
-            try:
-                md = tier.fetch(url)
-            except BotWall as e:
+        retries = _retries_for(tier.NAME)
+        retryable = _retryable_outcomes()
+        # Same-tier retry loop: 1 base attempt + N configured retries. A retryable
+        # failure with budget left re-attempts this tier; anything else (or the
+        # last attempt) falls through to the next tier. Each attempt is its own span.
+        for attempt in range(retries + 1):
+            with span(tier.NAME, **{Attr.HOST: host, Attr.TIER: tier.NAME}) as sp:
+                if paid:
+                    # Count every invocation so the host can be promoted to skip
+                    # (and to reflect real per-attempt spend on retries).
+                    botwall.record(db, url, tier.NAME, "firecrawl_used")
+                ts = time.monotonic()
+                outcome = exc = status = challenge = unavailable_exc = None
+                try:
+                    md = tier.fetch(url)
+                except BotWall as e:
+                    outcome, exc, challenge = "botwall", e, getattr(e, "vendor", None)
+                except ShortContent as e:
+                    outcome, exc = "short_content", e
+                except RateLimited as e:
+                    outcome, exc, status = "rate_limited", e, 429
+                except Unavailable as e:
+                    outcome, unavailable_exc = "unavailable", e
+                except Exception as e:
+                    exc = e
+                    outcome, status = classify_error(e)
                 dt = int((time.monotonic() - ts) * 1000)
-                _record_failure(sp, attempts, db, url, tier.NAME, "botwall", e, None, dt,
-                                challenge=getattr(e, "vendor", None))
-                continue
-            except ShortContent as e:
-                dt = int((time.monotonic() - ts) * 1000)
-                _record_failure(sp, attempts, db, url, tier.NAME, "short_content", e, None, dt)
-                continue
-            except RateLimited as e:
-                dt = int((time.monotonic() - ts) * 1000)
-                _record_failure(sp, attempts, db, url, tier.NAME, "rate_limited", e, 429, dt)
-                transient += 1
-                _maybe_backoff(transient, deadline)
-                continue
-            except Unavailable as e:
-                # Tier dependency missing/old/not-installed-yet. An environment
-                # problem, not a host trait — record the attempt + trace, but
-                # don't teach botwall anything about this host, and warn once per
-                # tier with the exact fix instead of spamming every URL.
-                dt = int((time.monotonic() - ts) * 1000)
-                sp.set(Attr.OUTCOME, "unavailable")
-                sp.set(Attr.ERROR, str(e))
-                sp.set(Attr.ERROR_CLASS, "unavailable")
-                sp.set(Attr.LATENCY_MS, dt)
-                attempts.append(TierAttempt(tier.NAME, "unavailable", str(e), None, dt))
-                if tier.NAME not in _unavail_warned:
-                    _unavail_warned.add(tier.NAME)
-                    logger.warning(f"{tier.NAME} unavailable: {e}")
-                continue
-            except Exception as e:
-                dt = int((time.monotonic() - ts) * 1000)
-                error_class, status = classify_error(e)
-                _record_failure(sp, attempts, db, url, tier.NAME, error_class, e, status, dt)
-                if error_class in _TRANSIENT:
-                    transient += 1
-                    _maybe_backoff(transient, deadline)
-                continue
 
-            dt = int((time.monotonic() - ts) * 1000)
-            if md is None:  # tier not applicable (e.g. no API mirror)
-                sp.set(Attr.OUTCOME, "not_applicable")
-                sp.set(Attr.LATENCY_MS, dt)
-                attempts.append(TierAttempt(tier.NAME, "not_applicable", latency_ms=dt))
-                continue
+                if outcome == "unavailable":
+                    # Tier dependency missing/old/not-installed-yet. An environment
+                    # problem, not a host trait — never retried and never taught to
+                    # botwall; warn once per tier with the exact fix instead of
+                    # spamming every URL.
+                    sp.set(Attr.OUTCOME, "unavailable")
+                    sp.set(Attr.ERROR, str(unavailable_exc))
+                    sp.set(Attr.ERROR_CLASS, "unavailable")
+                    sp.set(Attr.LATENCY_MS, dt)
+                    attempts.append(TierAttempt(tier.NAME, "unavailable",
+                                                str(unavailable_exc), None, dt))
+                    if tier.NAME not in _unavail_warned:
+                        _unavail_warned.add(tier.NAME)
+                        logger.warning(f"{tier.NAME} unavailable: {unavailable_exc}")
+                    break  # fall through to the next tier
 
-            total = int((time.monotonic() - t0) * 1000)
-            sp.set(Attr.OUTCOME, "ok")
-            sp.set(Attr.MD_LEN, len(md))
-            sp.set(Attr.SOURCE, tier.NAME)
-            sp.set(Attr.LATENCY_MS, dt)
-            botwall.record(db, url, tier.NAME, "ok", md_len=len(md), latency_ms=dt)
-            content_cache.put(url, md, tier.NAME, active_format())
-            root.set(Attr.OUTCOME, "ok")
-            root.set(Attr.SOURCE, tier.NAME)
-            root.set(Attr.LATENCY_MS, total)
-            attempts.append(TierAttempt(tier.NAME, "ok", latency_ms=dt))
-            logger.info(
-                f"{tier.NAME} OK {url} md_len={len(md)} {dt}ms (total {total}ms)")
-            return ScrapeOutcome(url, True, markdown=md, source_method=tier.NAME,
-                                 final_outcome="ok", latency_ms=total,
-                                 format=active_format(), attempts=attempts)
+                if outcome is not None:  # this attempt failed
+                    # Retry the same tier only if attempts remain, the failure is
+                    # retryable, and there's budget left for another shot.
+                    do_retry = (attempt < retries and outcome in retryable
+                                and time.monotonic() < deadline)
+                    # Intermediate retries are traced/logged but not persisted to
+                    # the policy DB — only the final per-tier outcome counts.
+                    _record_failure(sp, attempts, db, url, tier.NAME, outcome, exc,
+                                    status, dt, challenge=challenge, persist=not do_retry)
+                    if do_retry:
+                        _maybe_backoff(attempt + 1, deadline)  # space the retry
+                        continue
+                    if outcome in _TRANSIENT:
+                        transient += 1
+                        _maybe_backoff(transient, deadline)
+                    break  # fall through to the next tier
+
+                if md is None:  # tier not applicable (e.g. no API mirror)
+                    sp.set(Attr.OUTCOME, "not_applicable")
+                    sp.set(Attr.LATENCY_MS, dt)
+                    attempts.append(TierAttempt(tier.NAME, "not_applicable", latency_ms=dt))
+                    break
+
+                total = int((time.monotonic() - t0) * 1000)
+                sp.set(Attr.OUTCOME, "ok")
+                sp.set(Attr.MD_LEN, len(md))
+                sp.set(Attr.SOURCE, tier.NAME)
+                sp.set(Attr.LATENCY_MS, dt)
+                botwall.record(db, url, tier.NAME, "ok", md_len=len(md), latency_ms=dt)
+                content_cache.put(url, md, tier.NAME, active_format())
+                root.set(Attr.OUTCOME, "ok")
+                root.set(Attr.SOURCE, tier.NAME)
+                root.set(Attr.LATENCY_MS, total)
+                attempts.append(TierAttempt(tier.NAME, "ok", latency_ms=dt))
+                logger.info(
+                    f"{tier.NAME} OK {url} md_len={len(md)} {dt}ms (total {total}ms)")
+                return ScrapeOutcome(url, True, markdown=md, source_method=tier.NAME,
+                                     final_outcome="ok", latency_ms=total,
+                                     format=active_format(), attempts=attempts)
 
     total = int((time.monotonic() - t0) * 1000)
     ec, sc = _dominant_failure(attempts)

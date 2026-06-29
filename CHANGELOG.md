@@ -6,6 +6,30 @@ versioning while pre-1.0.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-06-29
+
+### Added
+- **Configurable per-tier retries** — a tier can now re-attempt before falling
+  through to the next, more capable one. `SCRAPER_TIER_RETRIES` (global, default
+  `0` = off; `N` → up to `1+N` tries per tier), per-tier overrides
+  `SCRAPER_TIER_RETRIES_<TIER>` (e.g. `SCRAPER_TIER_RETRIES_TIER3_BROWSER=2`), and
+  `SCRAPER_TIER_RETRY_ON` (retryable failure classes; default
+  `timeout,rate_limited,connection` — widen to include `botwall,http_block` behind
+  a rotating residential proxy, where each retry gets a fresh IP). Retries stay
+  bounded by `SCRAPER_DEADLINE_S`, and intermediate retries are traced/logged but
+  **not** persisted to the botwall policy DB, so they never inflate the
+  self-healing skip / `needs_egress` counters. Default `0` keeps behaviour
+  unchanged. Enabling retries on the paid Firecrawl tier bills per attempt.
+
+### Fixed
+- **Quality gate rejects content shells** — the gate no longer passes a page just
+  because it clears the length floor; thin "shell" pages (nav/boilerplate with no
+  real article body) are now treated as a tier miss so the cascade falls through.
+- **Paid last-resort budget reserve** — `SCRAPER_FIRECRAWL_FALLBACK_AFTER_S`
+  (default 25s) stops starting local tiers once enough of the per-URL deadline has
+  elapsed and an enabled paid tier is still ahead, so a hard host can't burn the
+  whole budget before Firecrawl gets a turn.
+
 ## [0.3.0] - 2026-06-27
 
 ### Added

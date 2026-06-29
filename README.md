@@ -249,6 +249,8 @@ export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
 - `SCRAPER_DISABLE_SESSION_CACHE` — turn off cf_clearance reuse
 - `SCRAPER_CONTENT_TTL_S` — URL→result cache TTL (**0 = off**; set e.g. 86400 to skip re-scraping a page within a day)
 - `SCRAPER_BACKOFF_BASE_MS` / `SCRAPER_BACKOFF_MAX_MS` — exponential backoff between tiers after a rate-limit/timeout (base 0 = off)
+- `SCRAPER_TIER_RETRIES` — same-tier retries before falling through (default 0 = off; `N` → up to `1+N` tries per tier), with per-tier overrides `SCRAPER_TIER_RETRIES_<TIER>` (e.g. `SCRAPER_TIER_RETRIES_TIER3_BROWSER=2`)
+- `SCRAPER_TIER_RETRY_ON` — failure classes eligible for a same-tier retry (default `timeout,rate_limited,connection`; widen to include `botwall,http_block` behind a rotating residential proxy so each retry gets a fresh IP). Retries are bounded by `SCRAPER_DEADLINE_S`; enabling them on the paid Firecrawl tier bills per attempt
 - `SCRAPER_LOGIN_HOOK` — `pkg.module:func` returning `{cookie: value}` for a host (see [Logged-in sessions](#logged-in-sessions))
 - `SCRAPER_EXTRACTION_FILE` — per-domain extraction prefs JSON (default `config/extraction.json`)
 - `SCRAPER_TRACE_SESSION` — opt-in: capture a Playwright trace (screenshots + DOM + network) per browser-tier attempt, written to `state/traces/`
