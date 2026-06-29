@@ -104,6 +104,34 @@ pip install "cloudscraper @ git+https://github.com/VeNoMouS/cloudscraper@3.0.0"
 Or run the whole thing as a container:
 `docker build -t switchback . && docker run -p 8799:8799 switchback`.
 
+### Production / cold-start deployment
+
+The two heavy tiers pull dependencies that often can't be baked into a base image
+and land *after* boot (e.g. an async install thread on Azure). Until they're
+ready, those tiers report **`unavailable`** (a distinct outcome carrying the exact
+fix) and the cascade falls through — they are never silently skipped. Checklist:
+
+- **Tier 3 is the real workhorse for Cloudflare/JS sites** — make sure its browser
+  is installed: `patchright install chromium` (note: **patchright**, not vanilla
+  `playwright`). On a cold start, run this in your post-boot install step/thread;
+  Tier 3 flips to ready once it finishes.
+- **Tier 2 needs the cloudscraper 3.x fork** (above) to attempt stealth. With the
+  frozen PyPI `cloudscraper` it reports `unavailable` and fails fast (no wasted
+  solve budget) instead of erroring mid-cascade. Tier 2 is a *weak* solver for
+  modern Cloudflare — treat it as a cheap try before the browser, not the primary.
+- **Install Node.js** for Tier 2's v3 JS-VM challenges — faster and thread-safe
+  vs. the pure-Python js2py fallback (relevant under concurrent load).
+- **Bound Tier 2's solve budget** with `SCRAPER_CLOUDSCRAPER_TIMEOUT_S` (default
+  `25`) so an unsolvable challenge can't eat the per-URL deadline before the
+  browser tier runs. Lower it (e.g. `12`) if Tier 2 rarely wins on your hosts.
+
+**Verify readiness on the box** with the preflight check (doubles as a healthcheck
+— exit 0 when the capable tiers are ready):
+
+```bash
+switchback --doctor          # or: python -m switchback --doctor
+```
+
 ## Use it from your app
 
 Three interchangeable entry points — all return the same shape
