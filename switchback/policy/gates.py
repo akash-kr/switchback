@@ -140,6 +140,50 @@ def classify_error(exc: BaseException) -> tuple[str, int | None]:
     return "error", status
 
 
+# A page can clear the length gate yet carry no article: a media page whose body
+# never rendered (headline + "Loading video…") or a nav/listing shell that is
+# almost all links. Length alone can't tell "1600 chars of nav links" from "1600
+# chars of prose", so these high-precision checks reject the shell. A false
+# positive (rejecting a real article) is worse than missing an exotic shell, so
+# the thresholds are deliberately conservative — validated to reject NONE of a
+# 90-URL real-content sample while catching the unrendered-media / nav-shell
+# cases that otherwise pass as false-positive "successes".
+_PLACEHOLDER_HEAD_MARKERS = (
+    "loading video",          # video page whose player never hydrated (headline only)
+)
+_NAV_SHELL_LINK_DENSITY = 0.65   # words-inside-links / total words, above which …
+_NAV_SHELL_MAX_TEXT = 600        # … and with this few chars of real text, it's a shell
+
+
+def _link_density(md: str) -> float:
+    """Fraction of words that live inside markdown links — a nav/listing shell is
+    nearly all links; an article is mostly prose."""
+    words = md.split()
+    if not words:
+        return 1.0
+    link_words = sum(len(m.split()) for m in re.findall(r"\[([^\]]+)\]\(", md))
+    return link_words / len(words)
+
+
+def _nonlink_text_len(md: str) -> int:
+    """Chars of real text once markdown links, URLs and formatting are stripped."""
+    t = re.sub(r"\[[^\]]*\]\([^)]*\)", "", md)   # [text](url)
+    t = re.sub(r"https?://\S+", "", t)
+    t = re.sub(r"[#*>`|!\-]", " ", t)
+    return len(re.sub(r"\s+", " ", t).strip())
+
+
+def _content_shell_reason(md: str) -> str | None:
+    """Reason if `md` cleared the length gate but is not an article (media
+    placeholder in the head, or a mostly-links nav/listing shell), else None."""
+    head = md[:_BOTWALL_HEAD_CHARS].lower()
+    if any(m in head for m in _PLACEHOLDER_HEAD_MARKERS):
+        return "unrendered media placeholder"
+    if _link_density(md) > _NAV_SHELL_LINK_DENSITY and _nonlink_text_len(md) < _NAV_SHELL_MAX_TEXT:
+        return "nav/listing shell (mostly links)"
+    return None
+
+
 def check(url: str, md: str | None) -> str:
     """Return md if it clears the gates, else raise BotWall / ShortContent."""
     vendor = classify_botwall(md)
@@ -149,6 +193,11 @@ def check(url: str, md: str | None) -> str:
     n = len(md) if md else 0
     if n < gate:
         raise ShortContent(f"body too short: {n} < {gate}")
+    # Length cleared, but is it actually content? Reject shells/placeholders so a
+    # tier falls through instead of returning a confident false-positive success.
+    shell = _content_shell_reason(md or "")
+    if shell:
+        raise ShortContent(f"no article content: {shell}")
     return md
 
 
