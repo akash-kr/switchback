@@ -240,6 +240,7 @@ export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
 
 - `SCRAPER_OUTPUT_FORMAT` — output shape: `markdown` (default) · `markdown_trimmed` · `html` · `html_selectors` (see [Output formats](#output-formats))
 - `SCRAPER_DEADLINE_S` — per-URL budget (45s)
+- `SCRAPER_FIRECRAWL_FALLBACK_AFTER_S` — after this many seconds on a URL, stop trying the local tiers and fall back to Firecrawl, so a hard host doesn't burn the whole deadline before the paid last resort gets a turn (25s; 0 = off)
 - `SCRAPER_CAMOUFOX_TIMEOUT_MS` — (45000)
 - `SCRAPER_BROWSER_CONCURRENCY` — max simultaneous headless browsers (default 1)
 - `SCRAPER_BOTWALL_URL_SKIP_COOLDOWN_H` — auto-skip re-test window (24h; 0 = never)
