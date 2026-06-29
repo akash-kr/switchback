@@ -31,6 +31,15 @@ logger = logging.getLogger(__name__)
 # tiers fail fast, while still bounding the worst case.
 _DEADLINE_S = float(os.getenv("SCRAPER_DEADLINE_S", "45"))
 
+# Fall back to Firecrawl after this many seconds on a URL. On a hard host the
+# cheaper tiers can burn the whole deadline (e.g. cloudscraper's ~25s timeout +
+# two browser solves), so the cascade would hit the deadline and quit *before*
+# ever trying the one tier that reliably works. Once this much time has elapsed,
+# we stop starting more local tiers and jump straight to Firecrawl — so the
+# safety net actually gets a turn. Default 25s leaves ~20s of the 45s deadline
+# for Firecrawl. Only applies when a paid, enabled tier is still ahead; 0 = off.
+_FIRECRAWL_FALLBACK_AFTER_S = float(os.getenv("SCRAPER_FIRECRAWL_FALLBACK_AFTER_S", "25"))
+
 # Exponential backoff between tiers after a *transient* failure (rate_limited /
 # timeout) — gives a rate limiter or a slow origin a moment before the next tier
 # hammers it. Disabled by default (base 0) so behaviour is unchanged until opted
@@ -51,7 +60,7 @@ def _maybe_backoff(transient_n: int, deadline: float) -> None:
     time.sleep(delay)
 
 # Per-attempt outcomes that aren't real failures (don't carry a failure reason).
-_NON_FAILURE = ("ok", "not_applicable", "disabled")
+_NON_FAILURE = ("ok", "not_applicable", "disabled", "skipped_for_budget")
 
 # How explanatory each failure class is, for picking the reason that best
 # describes why a URL failed. A real wall (403 / bot-wall) outranks a trailing
@@ -214,6 +223,17 @@ def _run_one(url: str, db: dict) -> ScrapeOutcome:
             return res
 
 
+def _enabled_paid_ahead(i: int) -> bool:
+    """Is there a paid, currently-enabled tier after index i? (i.e. a last-resort
+    worth reserving budget for.)"""
+    for tier in TIERS[i + 1:]:
+        if getattr(tier, "PAID", False):
+            disabled_fn = getattr(tier, "disabled", None)
+            if not (disabled_fn and disabled_fn()):
+                return True
+    return False
+
+
 def _run_cascade(url, host, db, root, t0, deadline) -> ScrapeOutcome:
     attempts: list[TierAttempt] = []
     transient = 0  # count of rate_limited/timeout misses so far (drives backoff)
@@ -241,8 +261,25 @@ def _run_cascade(url, host, db, root, t0, deadline) -> ScrapeOutcome:
             attempts.append(TierAttempt(tier.NAME, "not_applicable"))
             continue
 
-        # Limit: stop before starting another tier if we're out of budget.
-        if time.monotonic() >= deadline:
+        # Fall back to Firecrawl: once enough time has elapsed on this URL and a
+        # paid enabled tier is still ahead, skip this (non-paid) tier and any
+        # others so the paid tier actually gets a turn instead of the cascade
+        # dying on the deadline mid-browser-solve.
+        if (_FIRECRAWL_FALLBACK_AFTER_S and not getattr(tier, "PAID", False)
+                and (time.monotonic() - t0) >= _FIRECRAWL_FALLBACK_AFTER_S
+                and _enabled_paid_ahead(i)):
+            logger.info(
+                f"{tier.NAME} skipped after {_FIRECRAWL_FALLBACK_AFTER_S}s to "
+                f"fall back to Firecrawl (last resort): {url}")
+            attempts.append(TierAttempt(tier.NAME, "skipped_for_budget"))
+            continue
+
+        # Limit: stop before starting another tier if we're out of budget. The
+        # paid last resort is exempt — if the cascade reached it, let it run even
+        # a touch over the deadline rather than quit with nothing (it has its own
+        # internal timeout). Non-paid tiers with a paid tier ahead were already
+        # skipped above, so this only ever quits when no paid tier remains.
+        if time.monotonic() >= deadline and not getattr(tier, "PAID", False):
             total = int((time.monotonic() - t0) * 1000)
             ec, sc = _dominant_failure(attempts)
             root.set(Attr.OUTCOME, "deadline_exceeded")
