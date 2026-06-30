@@ -13,7 +13,7 @@ from __future__ import annotations
 import os
 import shutil
 
-from .tiers import tier2_cloudscraper, tier3_browser
+from .tiers import tier_3, tier_4
 
 
 def _camoufox() -> tuple[bool, str]:
@@ -28,16 +28,16 @@ def _camoufox() -> tuple[bool, str]:
 
 def probe() -> list[tuple[str, bool, str]]:
     """(label, ok, detail) for each tier/dependency that matters at runtime."""
-    cs_ok, cs_detail = tier2_cloudscraper.available()
-    br_ok, br_detail = tier3_browser.available()
+    cs_ok, cs_detail = tier_3.available()
+    br_ok, br_detail = tier_4.available()
     node = shutil.which("node")
     return [
-        ("tier2_cloudscraper", cs_ok, cs_detail),
-        ("tier3_browser", br_ok, br_detail),
-        ("tier3b_camoufox", *_camoufox()),
-        ("node (tier2 v3 concurrency)", bool(node),
-         node or "not on PATH — Tier 2 falls back to slower, thread-fragile js2py"),
-        ("tier4_firecrawl", bool(os.getenv("FIRECRAWL_API_KEY")),
+        ("tier_3 (cloudscraper)", cs_ok, cs_detail),
+        ("tier_4 (browser)", br_ok, br_detail),
+        ("tier_5 (camoufox)", *_camoufox()),
+        ("node (tier_3 v3 concurrency)", bool(node),
+         node or "not on PATH — tier_3 falls back to slower, thread-fragile js2py"),
+        ("tier_7 (firecrawl)", bool(os.getenv("FIRECRAWL_API_KEY")),
          "FIRECRAWL_API_KEY set" if os.getenv("FIRECRAWL_API_KEY")
          else "off (no FIRECRAWL_API_KEY)"),
     ]

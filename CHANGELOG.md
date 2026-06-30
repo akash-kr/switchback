@@ -6,6 +6,31 @@ versioning while pre-1.0.
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-06-30
+
+### Changed
+- **Tiers renamed to plain `tier_1`…`tier_7`** (cost-ordered, contiguous) in place
+  of the old mixed scheme (`tier0_apis`, `tier1_http`, `tier2_cloudscraper`,
+  `tier3_browser`, `tier3b_camoufox`, `tier_residential`, `tier4_firecrawl`). The
+  mapping is positional: `tier_1`=apis, `tier_2`=http, `tier_3`=cloudscraper,
+  `tier_4`=browser, `tier_5`=camoufox, `tier_6`=residential, `tier_7`=firecrawl.
+  **Backwards-compatible:** an existing `state/botwall_db.json` is migrated on load
+  (a host's learned `winning_tier` / `tier_stats` keys are remapped to the new
+  names), so routing survives the upgrade instead of re-probing from scratch.
+
+### Added
+- **Per-tier timeout knobs** — every tier now reads `SCRAPER_TIER_<N>_TIMEOUT_S`
+  (seconds, `N` = 1–7). Defaults: `15` for tiers without a prior budget
+  (apis/http/browser), and the existing budgets are preserved — `tier_3`=25,
+  `tier_5`=45, `tier_6`=30. The previously-unconfigurable/unbounded tiers (apis,
+  http, browser, **firecrawl**) are now bounded and overridable. The pre-rename
+  `SCRAPER_CLOUDSCRAPER_TIMEOUT_S` / `SCRAPER_CAMOUFOX_TIMEOUT_MS` /
+  `SCRAPER_RESIDENTIAL_TIMEOUT_MS` are still honored when the new var is unset.
+  Note: `tier_7` (paid Firecrawl) was previously unbounded; its new `15`s default
+  bounds it — raise `SCRAPER_TIER_7_TIMEOUT_S` if hard hosts get cut off (a scrape
+  killed at the cap may still be billed). `SCRAPER_TIER_RETRIES_<TIER>` overrides
+  follow the new names (e.g. `SCRAPER_TIER_RETRIES_TIER_4`).
+
 ## [0.4.0] - 2026-06-29
 
 ### Added

@@ -19,8 +19,11 @@ from ..egress import playwright_proxy, add_wire_bytes
 from ..normalize import html_to_markdown
 from ..policy.gates import Unavailable, check
 
-NAME = "tier3_browser"
+NAME = "tier_4"
 PAID = False
+
+# Per-tier navigation timeout (seconds); override with SCRAPER_TIER_4_TIMEOUT_S.
+_TIMEOUT_S = float(os.getenv("SCRAPER_TIER_4_TIMEOUT_S", "15"))
 
 # Install hint surfaced when patchright or its Chromium isn't ready — notably
 # during an async cold-start install (the browser binary lands after boot).
@@ -47,7 +50,7 @@ def available() -> tuple[bool, str]:
     return True, "patchright + Chromium ready"
 
 
-def fetch(url: str, timeout_ms: int = 15000) -> str:
+def fetch(url: str, timeout_ms: int = int(_TIMEOUT_S * 1000)) -> str:
     try:
         from patchright.sync_api import sync_playwright
     except ImportError:

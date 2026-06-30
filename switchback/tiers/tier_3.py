@@ -26,7 +26,7 @@ from ..policy.gates import Unavailable, check
 
 logger = logging.getLogger(__name__)
 
-NAME = "tier2_cloudscraper"
+NAME = "tier_3"
 PAID = False
 
 # Install hint surfaced when cloudscraper is missing or the frozen PyPI 1.2.71
@@ -61,7 +61,10 @@ def available() -> tuple[bool, str]:
 # per-request socket timeout. Capping it here lets the cascade fall through to the
 # stealth browser (which can handle interactive challenges) instead of burning the
 # per-URL deadline. ~25s comfortably covers a real JS/v3 solve (~5-15s).
-_TIMEOUT_S = float(os.getenv("SCRAPER_CLOUDSCRAPER_TIMEOUT_S", "25"))
+# Back-compat: honor the pre-0.5.0 SCRAPER_CLOUDSCRAPER_TIMEOUT_S if the new var
+# is unset, so a tuned prod value survives the tier rename.
+_TIMEOUT_S = float(os.getenv("SCRAPER_TIER_3_TIMEOUT_S",
+                             os.getenv("SCRAPER_CLOUDSCRAPER_TIMEOUT_S", "25")))
 
 # Stealth pacing. Kept modest: Tier 2 only fires on CF-suspected hosts, and the
 # real latency win comes from skipping the solve entirely on repeat hits (session
@@ -153,7 +156,7 @@ def fetch(url: str) -> str:
             except BaseException as e:  # noqa: BLE001 — propagated to caller below
                 box["err"] = e
 
-    t = threading.Thread(target=work, name="tier2-cloudscraper", daemon=True)
+    t = threading.Thread(target=work, name="tier_3-cloudscraper", daemon=True)
     t.start()
     t.join(_TIMEOUT_S)
     if t.is_alive():

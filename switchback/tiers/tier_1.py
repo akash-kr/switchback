@@ -10,6 +10,7 @@ Web *search* (query → URLs) is a different shape and lives in switchback/searc
 """
 from __future__ import annotations
 
+import os
 import re
 from urllib.parse import unquote
 from xml.etree import ElementTree as ET
@@ -17,8 +18,11 @@ from xml.etree import ElementTree as ET
 from ..normalize import html_to_markdown, UA
 from ..policy.gates import check
 
-NAME = "tier0_apis"
+NAME = "tier_1"
 PAID = False
+
+# Per-tier request timeout (seconds); override with SCRAPER_TIER_1_TIMEOUT_S.
+_TIMEOUT_S = float(os.getenv("SCRAPER_TIER_1_TIMEOUT_S", "15"))
 
 ARXIV_RE = re.compile(r"arxiv\.org/(?:abs|pdf)/(\d{4}\.\d{4,5})(?:v\d+)?(?:\.pdf)?", re.I)
 WIKI_RE = re.compile(r"en\.wikipedia\.org/wiki/([^?#]+)", re.I)
@@ -42,7 +46,7 @@ def _arxiv(arxiv_id: str, url: str) -> str:
     # impersonating Chrome triggers aggressive 429s from their Akamai front-end.
     import requests
     r = requests.get(f"https://export.arxiv.org/api/query?id_list={arxiv_id}",
-                     timeout=15,
+                     timeout=_TIMEOUT_S,
                      headers={"User-Agent": "switchback/1.0 (mailto:akash@theaklabs.com)"})
     r.raise_for_status()
     ns = {"atom": "http://www.w3.org/2005/Atom"}
@@ -60,7 +64,7 @@ def _arxiv(arxiv_id: str, url: str) -> str:
 def _wikipedia(title: str, url: str) -> str:
     from curl_cffi import requests as cffi
     r = cffi.get(f"https://en.wikipedia.org/api/rest_v1/page/html/{unquote(title)}",
-                 timeout=15, impersonate="chrome")
+                 timeout=_TIMEOUT_S, impersonate="chrome")
     r.raise_for_status()
     return check(url, html_to_markdown(r.text, base_url=url))
 
@@ -70,7 +74,7 @@ def _europepmc(url: str) -> str:
     import requests
     pmcid = PMC_RE.search(url).group(1)
     api = f"https://www.ebi.ac.uk/europepmc/webservices/rest/{pmcid}/fullTextXML"
-    r = requests.get(api, timeout=20, headers={"User-Agent": UA})
+    r = requests.get(api, timeout=_TIMEOUT_S, headers={"User-Agent": UA})
     r.raise_for_status()
     if len(r.text) < 1000:
         raise RuntimeError(f"europepmc empty: {len(r.text)}")

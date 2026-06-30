@@ -45,7 +45,7 @@ def _run(tiers):
 def test_unavailable_outcome_is_distinct():
     def boom(url):
         raise Unavailable("cloudscraper not installed — pip install ...")
-    out = _run([_tier("tier2_cloudscraper", boom)])
+    out = _run([_tier("tier_3", boom)])
     assert out.ok is False
     assert out.error_class == "unavailable"
     assert [a.outcome for a in out.attempts] == ["unavailable"]
@@ -59,8 +59,8 @@ def test_unavailable_outranks_botwall_masking():
         raise BotWall("cloudflare", vendor="cloudflare")
     def missing(url):
         raise Unavailable("patchright Chromium not installed — patchright install chromium")
-    out = _run([_tier("tier1_http", wall),
-                _tier("tier3_browser", missing)])
+    out = _run([_tier("tier_2", wall),
+                _tier("tier_4", missing)])
     assert out.error_class == "unavailable"
     outcomes = [a.outcome for a in out.attempts]
     assert outcomes == ["botwall", "unavailable"]
@@ -68,9 +68,9 @@ def test_unavailable_outranks_botwall_masking():
 
 def test_healthy_tier_is_unaffected():
     """A tier that returns content still wins — no behavior change."""
-    out = _run([_tier("tier1_http", lambda url: "# ok\n\nbody")])
+    out = _run([_tier("tier_2", lambda url: "# ok\n\nbody")])
     assert out.ok is True
-    assert out.source_method == "tier1_http"
+    assert out.source_method == "tier_2"
     assert out.error_class == ""
 
 

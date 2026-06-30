@@ -25,10 +25,16 @@ from ..policy.gates import check
 
 logger = logging.getLogger(__name__)
 
-NAME = "tier3b_camoufox"
+NAME = "tier_5"
 PAID = False
 
-_TIMEOUT_MS = int(os.getenv("SCRAPER_CAMOUFOX_TIMEOUT_MS", "45000"))
+# Per-tier navigation timeout (seconds); override with SCRAPER_TIER_5_TIMEOUT_S.
+# Default kept at 45s — camoufox is the slowest rung (~40s on a hard CF solve).
+# Back-compat: honor the pre-0.5.0 SCRAPER_CAMOUFOX_TIMEOUT_MS (ms) if unset.
+_legacy_ms = os.getenv("SCRAPER_CAMOUFOX_TIMEOUT_MS")
+_TIMEOUT_S = float(os.getenv("SCRAPER_TIER_5_TIMEOUT_S",
+                             str(float(_legacy_ms) / 1000) if _legacy_ms else "45"))
+_TIMEOUT_MS = int(_TIMEOUT_S * 1000)
 
 
 def disabled() -> bool:

@@ -12,8 +12,14 @@ import threading
 from ..normalize import active_format, render
 from ..policy.gates import check
 
-NAME = "tier4_firecrawl"
+NAME = "tier_7"
 PAID = True
+
+# Per-tier wall-clock cap (seconds); override with SCRAPER_TIER_7_TIMEOUT_S.
+# This paid last resort was previously unbounded; 15s bounds it like the rest, but
+# Firecrawl scrapes can legitimately run longer — raise this if hard hosts get cut
+# off at the finish line (you may still be billed for a scrape killed here).
+_TIMEOUT_S = float(os.getenv("SCRAPER_TIER_7_TIMEOUT_S", "15"))
 
 
 def disabled() -> bool:
@@ -49,9 +55,13 @@ def fetch(url: str) -> str:
         except BaseException as e:  # noqa: BLE001 — re-raised to the caller below
             box["err"] = e
 
-    t = threading.Thread(target=work, name="tier4-firecrawl", daemon=True)
+    t = threading.Thread(target=work, name="tier_7-firecrawl", daemon=True)
     t.start()
-    t.join()
+    t.join(_TIMEOUT_S)
+    if t.is_alive():
+        raise TimeoutError(
+            f"firecrawl exceeded {_TIMEOUT_S}s "
+            "(raise SCRAPER_TIER_7_TIMEOUT_S for slow hosts)")
     if "err" in box:
         raise box["err"]
     return box["md"]

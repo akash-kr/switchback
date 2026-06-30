@@ -172,7 +172,7 @@ def _start_index(url: str, db: dict) -> int:
     if botwall.needs_egress(host, db):
         if egress.has_egress_proxy():
             return 0
-        res_i = INDEX.get("tier_residential")
+        res_i = INDEX.get("tier_6")
         if res_i is not None:
             disabled_fn = getattr(TIERS[res_i], "disabled", None)
             if not (disabled_fn and disabled_fn()):
@@ -298,7 +298,7 @@ def _run_cascade(url, host, db, root, t0, deadline) -> ScrapeOutcome:
         # solve attempt and go straight to the browser/egress tiers. A real CF
         # challenge surfaces as `botwall`, not `http_block`, so this never skips a
         # host cloudscraper could actually clear.
-        if tier.NAME == "tier2_cloudscraper" and any(
+        if tier.NAME == "tier_3" and any(
                 a.outcome == "http_block" for a in attempts):
             logger.info(f"{tier.NAME} skipped (prior hard IP block): {url}")
             attempts.append(TierAttempt(tier.NAME, "not_applicable"))

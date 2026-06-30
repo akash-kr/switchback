@@ -10,7 +10,7 @@ Run it from cron / the /loop skill / any scheduler:
     python -m switchback.flags --json          # machine-readable digest
 
 What it flags:
-  • domains still landing on paid Firecrawl (winning_tier == tier4_firecrawl)
+  • domains still landing on paid Firecrawl (winning_tier == tier_7)
   • domains escalated to residential egress (needs_egress)
   • domains throwing the most bot-wall challenges (by vendor)
   • low coverage / negative cost savings in the window
@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 # A domain is "stuck" if its winning tier is the paid one — these are the hosts
 # that still cost money and are the prime targets for a new tier / cookie / rule.
-_PAID_TIER = "tier4_firecrawl"
+_PAID_TIER = "tier_7"
 
 
 def build_digest(minutes: int | None = None) -> dict:

@@ -39,7 +39,7 @@ FIRECRAWL_USD = float(os.getenv("BENCH_FIRECRAWL_USD", "0.001"))
 HARD_MULT = float(os.getenv("BENCH_FIRECRAWL_HARD_MULT", "5"))
 
 # Tiers whose win means Firecrawl would have billed the hard (stealth) rate.
-_HARD_TIERS = {"tier3_browser", "tier3b_camoufox", "tier_residential", "tier4_firecrawl"}
+_HARD_TIERS = {"tier_4", "tier_5", "tier_6", "tier_7"}
 
 
 def _parse_ts(ts: str) -> datetime | None:

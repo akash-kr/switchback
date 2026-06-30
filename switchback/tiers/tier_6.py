@@ -22,10 +22,16 @@ from ..concurrency import browser_slot
 from ..normalize import html_to_markdown
 from ..policy.gates import check
 
-NAME = "tier_residential"
+NAME = "tier_6"
 PAID = False
 
-_TIMEOUT_MS = int(os.getenv("SCRAPER_RESIDENTIAL_TIMEOUT_MS", "30000"))
+# Per-tier navigation timeout (seconds); override with SCRAPER_TIER_6_TIMEOUT_S.
+# Default kept at 30s — remote CDP over a residential proxy is slow to first paint.
+# Back-compat: honor the pre-0.5.0 SCRAPER_RESIDENTIAL_TIMEOUT_MS (ms) if unset.
+_legacy_ms = os.getenv("SCRAPER_RESIDENTIAL_TIMEOUT_MS")
+_TIMEOUT_S = float(os.getenv("SCRAPER_TIER_6_TIMEOUT_S",
+                             str(float(_legacy_ms) / 1000) if _legacy_ms else "30"))
+_TIMEOUT_MS = int(_TIMEOUT_S * 1000)
 
 
 def disabled() -> bool:

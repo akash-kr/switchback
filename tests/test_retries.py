@@ -145,10 +145,10 @@ def test_global_default_and_override():
     for k in list(os.environ):
         if k.startswith("SCRAPER_TIER_RETR"):
             del os.environ[k]
-    assert O._retries_for("tier1_http") == 0
+    assert O._retries_for("tier_2") == 0
     os.environ["SCRAPER_TIER_RETRIES"] = "3"
-    assert O._retries_for("tier3_browser") == 3
-    os.environ["SCRAPER_TIER_RETRIES_TIER1_HTTP"] = "5"
-    assert O._retries_for("tier1_http") == 5
+    assert O._retries_for("tier_4") == 3
+    os.environ["SCRAPER_TIER_RETRIES_TIER_2"] = "5"
+    assert O._retries_for("tier_2") == 5
     del os.environ["SCRAPER_TIER_RETRIES"]
-    del os.environ["SCRAPER_TIER_RETRIES_TIER1_HTTP"]
+    del os.environ["SCRAPER_TIER_RETRIES_TIER_2"]

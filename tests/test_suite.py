@@ -85,7 +85,7 @@ TESTS: list[TestCase] = [
         url="https://en.wikipedia.org/wiki/Artificial_intelligence",
         label="Wikipedia — Artificial Intelligence article",
         category="tier0",
-        expected_tier="tier0_apis",
+        expected_tier="tier_1",
         must_contain=["intelligence", "machine learning"],
         must_not_contain=["enable JavaScript", "Access Denied"],
     ),
@@ -93,7 +93,7 @@ TESTS: list[TestCase] = [
         url="https://arxiv.org/abs/2303.08774",
         label="ArXiv — GPT-4 Technical Report abstract",
         category="tier0",
-        expected_tier="tier0_apis",
+        expected_tier="tier_1",
         must_contain=["GPT-4", "OpenAI"],
         must_not_contain=["enable JavaScript"],
     ),
@@ -103,7 +103,7 @@ TESTS: list[TestCase] = [
         url="https://news.ycombinator.com",
         label="Hacker News — frontpage (vanilla HTML)",
         category="tier1",
-        expected_tier="tier1_http",
+        expected_tier="tier_2",
         must_contain=["Hacker News"],
         must_not_contain=["enable JavaScript", "Access Denied"],
     ),
@@ -130,7 +130,7 @@ TESTS: list[TestCase] = [
     ),
 
     # ── TIER 1 PDF: binary extraction via pypdf ────────────────────────────────
-    # Note: arxiv.org has a botwall winning-tier hint → tier0_apis, so the
+    # Note: arxiv.org has a botwall winning-tier hint → tier_1, so the
     # orchestrator may serve the abstract via API instead of parsing the PDF.
     # The extraction is still correct; we just can't assert a specific tier.
     TestCase(
@@ -459,9 +459,9 @@ def print_summary(results: list[TestResult]) -> None:
 
     if by_tier_ms:
         print(bold("  Time spent per tier (all attempts, not just the winner):"))
-        tier_order = ["tier0_apis", "tier1_http", "tier2_cloudscraper",
-                      "tier3_browser", "tier3b_camoufox", "tier_residential",
-                      "tier4_firecrawl"]
+        tier_order = ["tier_1", "tier_2", "tier_3",
+                      "tier_4", "tier_5", "tier_6",
+                      "tier_7"]
         ordered = sorted(by_tier_ms.items(), key=lambda kv: (
             tier_order.index(kv[0]) if kv[0] in tier_order else 99))
         for tier, ms_list in ordered:

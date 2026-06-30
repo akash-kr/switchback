@@ -62,13 +62,13 @@ That's the whole loop. Add tiers as you need them (see [Install](#install)).
 
 | Tier | Strategy | Cost |
 |---|---|---|
-| 0 | Direct APIs / mirrors (arxiv, wikipedia, EuropePMC; extend: job boards) | free, cleanest |
-| 1 | Plain HTTP + TLS impersonation (`curl_cffi`), incl. PDFs | cheap |
-| 2 | Cloudflare / anti-bot solver (`cloudscraper`, install `.[cloudflare]`) | cheap-ish (~5s/host) |
-| 3 | Stealth headless browser (`patchright`, Chromium) | heavy |
-| 3b | Camoufox (Firefox stealth) — **on by default** (opt out: `SCRAPER_DISABLE_CAMOUFOX`) | heavy + slow (~40s on hard CF) |
-| 3c | Residential-IP browser over CDP (`BU_CDP_URL`) — off unless configured | heavy (remote egress) |
-| 4 | Firecrawl (paid, env-gated, audited) | paid, last resort |
+| tier_1 | Direct APIs / mirrors (arxiv, wikipedia, EuropePMC; extend: job boards) | free, cleanest |
+| tier_2 | Plain HTTP + TLS impersonation (`curl_cffi`), incl. PDFs | cheap |
+| tier_3 | Cloudflare / anti-bot solver (`cloudscraper`, install `.[cloudflare]`) | cheap-ish (~5s/host) |
+| tier_4 | Stealth headless browser (`patchright`, Chromium) | heavy |
+| tier_5 | Camoufox (Firefox stealth) — **on by default** (opt out: `SCRAPER_DISABLE_CAMOUFOX`) | heavy + slow (~40s on hard CF) |
+| tier_6 | Residential-IP browser over CDP (`BU_CDP_URL`) — off unless configured | heavy (remote egress) |
+| tier_7 | Firecrawl (paid, env-gated, audited) | paid, last resort |
 
 Every URL has a wall-clock budget (`SCRAPER_DEADLINE_S`, default 45s) checked between
 tiers so one URL can't run the whole cascade of timeouts. Each tier attempt records
@@ -83,17 +83,17 @@ Search (query → URLs) is separate from the scrape cascade: `switchback.search(
 ## Install
 
 ```bash
-pip install switchback                 # core: normalization + cheap tiers (0/1) + search
-pip install "switchback[cloudflare]"   # + Tier 2 Cloudflare/anti-bot solver (cloudscraper)
+pip install switchback                 # core: normalization + cheap tiers (tier_1/tier_2) + search
+pip install "switchback[cloudflare]"   # + tier_3 Cloudflare/anti-bot solver (cloudscraper)
 pip install "switchback[server]"       # + HTTP service (fastapi, uvicorn) incl. /metrics + /traces
-pip install "switchback[browser]" && patchright install chromium   # + Tier 3 stealth Chromium
-pip install "switchback[camoufox]" && camoufox fetch               # + Tier 3b Firefox stealth
-pip install "switchback[firecrawl]"    # + Tier 4 paid API (needs FIRECRAWL_API_KEY)
+pip install "switchback[browser]" && patchright install chromium   # + tier_4 stealth Chromium
+pip install "switchback[camoufox]" && camoufox fetch               # + tier_5 Firefox stealth
+pip install "switchback[firecrawl]"    # + tier_7 paid API (needs FIRECRAWL_API_KEY)
 pip install "switchback[tracing]"      # + OpenTelemetry -> any OTLP backend
 pip install "switchback[all]"          # everything
 ```
 
-For Tier 2's **full** v3 JS-VM + Turnstile + stealth, install the Enhanced Edition
+For tier_3's **full** v3 JS-VM + Turnstile + stealth, install the Enhanced Edition
 3.x fork (PyPI's `cloudscraper` is the older v1/v2 — PyPI forbids pinning a
 git-URL dep inside a published package, so install it alongside):
 
@@ -111,19 +111,20 @@ and land *after* boot (e.g. an async install thread on Azure). Until they're
 ready, those tiers report **`unavailable`** (a distinct outcome carrying the exact
 fix) and the cascade falls through — they are never silently skipped. Checklist:
 
-- **Tier 3 is the real workhorse for Cloudflare/JS sites** — make sure its browser
+- **tier_4 is the real workhorse for Cloudflare/JS sites** — make sure its browser
   is installed: `patchright install chromium` (note: **patchright**, not vanilla
   `playwright`). On a cold start, run this in your post-boot install step/thread;
-  Tier 3 flips to ready once it finishes.
-- **Tier 2 needs the cloudscraper 3.x fork** (above) to attempt stealth. With the
+  tier_4 flips to ready once it finishes.
+- **tier_3 needs the cloudscraper 3.x fork** (above) to attempt stealth. With the
   frozen PyPI `cloudscraper` it reports `unavailable` and fails fast (no wasted
-  solve budget) instead of erroring mid-cascade. Tier 2 is a *weak* solver for
+  solve budget) instead of erroring mid-cascade. tier_3 is a *weak* solver for
   modern Cloudflare — treat it as a cheap try before the browser, not the primary.
-- **Install Node.js** for Tier 2's v3 JS-VM challenges — faster and thread-safe
+- **Install Node.js** for tier_3's v3 JS-VM challenges — faster and thread-safe
   vs. the pure-Python js2py fallback (relevant under concurrent load).
-- **Bound Tier 2's solve budget** with `SCRAPER_CLOUDSCRAPER_TIMEOUT_S` (default
-  `25`) so an unsolvable challenge can't eat the per-URL deadline before the
-  browser tier runs. Lower it (e.g. `12`) if Tier 2 rarely wins on your hosts.
+- **Bound tier_3's solve budget** with `SCRAPER_TIER_3_TIMEOUT_S` (default `25`;
+  the old `SCRAPER_CLOUDSCRAPER_TIMEOUT_S` is still honored) so an unsolvable
+  challenge can't eat the per-URL deadline before the browser tier runs. Lower it
+  (e.g. `12`) if tier_3 rarely wins on your hosts.
 
 **Verify readiness on the box** with the preflight check (doubles as a healthcheck
 — exit 0 when the capable tiers are ready):
@@ -223,16 +224,16 @@ export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
 <details>
 <summary><b>Env gates</b> — enable/disable tiers and integrations</summary>
 
-- `SCRAPER_DISABLE_FIRECRAWL` — skip Tier 4
-- `FIRECRAWL_API_KEY` — enable Tier 4
-- `SCRAPER_DISABLE_CAMOUFOX` — turn off Tier 3b (on by default; needs `pip install camoufox` + `camoufox fetch`)
-- `BU_CDP_URL` — enable Tier 3c residential browser by pointing at a CDP endpoint
+- `SCRAPER_DISABLE_FIRECRAWL` — skip tier_7
+- `FIRECRAWL_API_KEY` — enable tier_7
+- `SCRAPER_DISABLE_CAMOUFOX` — turn off tier_5 (on by default; needs `pip install camoufox` + `camoufox fetch`)
+- `BU_CDP_URL` — enable tier_6 residential browser by pointing at a CDP endpoint
 - `SCRAPER_PROXY` — route *all* tiers/URLs through a proxy
 - `SCRAPER_EGRESS_PROXY` — route only walled hosts through a proxy (see [Cost-scoped residential egress](#cost-scoped-residential-egress))
 - `SEARXNG_URL` — defaults to `http://localhost:8888`
 - `SCRAPER_STATE_DIR` — where the botwall DB/event log + session cache live
 - `SCRAPER_COOKIES_FILE` — Netscape `cookies.txt` to scrape login-gated hosts (injected into the HTTP and browser tiers)
-- `SCRAPER_CAPTCHA_PROVIDER` + `SCRAPER_CAPTCHA_API_KEY` — opt-in, off by default: wire a third-party solver (2captcha/capsolver/capmonster/anticaptcha/deathbycaptcha/9kw) into Tier 2 for Turnstile/reCAPTCHA/hCaptcha on CF hosts. **Paid**, billed per solve by the provider.
+- `SCRAPER_CAPTCHA_PROVIDER` + `SCRAPER_CAPTCHA_API_KEY` — opt-in, off by default: wire a third-party solver (2captcha/capsolver/capmonster/anticaptcha/deathbycaptcha/9kw) into tier_3 for Turnstile/reCAPTCHA/hCaptcha on CF hosts. **Paid**, billed per solve by the provider.
 </details>
 
 <details>
@@ -241,7 +242,7 @@ export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
 - `SCRAPER_OUTPUT_FORMAT` — output shape: `markdown` (default) · `markdown_trimmed` · `html` · `html_selectors` (see [Output formats](#output-formats))
 - `SCRAPER_DEADLINE_S` — per-URL budget (45s)
 - `SCRAPER_FIRECRAWL_FALLBACK_AFTER_S` — after this many seconds on a URL, stop trying the local tiers and fall back to Firecrawl, so a hard host doesn't burn the whole deadline before the paid last resort gets a turn (25s; 0 = off)
-- `SCRAPER_CAMOUFOX_TIMEOUT_MS` — (45000)
+- `SCRAPER_TIER_<N>_TIMEOUT_S` — per-tier timeout in seconds, `N` = 1–7 (tier_1 apis · tier_2 http · tier_3 cloudscraper · tier_4 browser · tier_5 camoufox · tier_6 residential · tier_7 firecrawl). Defaults: 15/15/**25**/15/**45**/**30**/15 (the three bold ones keep their prior budgets; everything else is 15s). The pre-0.5.0 `SCRAPER_CLOUDSCRAPER_TIMEOUT_S` / `SCRAPER_CAMOUFOX_TIMEOUT_MS` / `SCRAPER_RESIDENTIAL_TIMEOUT_MS` are still honored when the new var is unset. Note: `tier_7` (Firecrawl) was previously unbounded — its 15s default now bounds the paid tier, so raise `SCRAPER_TIER_7_TIMEOUT_S` if slow hosts get cut off
 - `SCRAPER_BROWSER_CONCURRENCY` — max simultaneous headless browsers (default 1)
 - `SCRAPER_BOTWALL_URL_SKIP_COOLDOWN_H` — auto-skip re-test window (24h; 0 = never)
 - `SCRAPER_BOTWALL_EGRESS_AFTER` — local-tier failures before a host escalates to the residential tier (default 2)
@@ -249,7 +250,7 @@ export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
 - `SCRAPER_DISABLE_SESSION_CACHE` — turn off cf_clearance reuse
 - `SCRAPER_CONTENT_TTL_S` — URL→result cache TTL (**0 = off**; set e.g. 86400 to skip re-scraping a page within a day)
 - `SCRAPER_BACKOFF_BASE_MS` / `SCRAPER_BACKOFF_MAX_MS` — exponential backoff between tiers after a rate-limit/timeout (base 0 = off)
-- `SCRAPER_TIER_RETRIES` — same-tier retries before falling through (default 0 = off; `N` → up to `1+N` tries per tier), with per-tier overrides `SCRAPER_TIER_RETRIES_<TIER>` (e.g. `SCRAPER_TIER_RETRIES_TIER3_BROWSER=2`)
+- `SCRAPER_TIER_RETRIES` — same-tier retries before falling through (default 0 = off; `N` → up to `1+N` tries per tier), with per-tier overrides `SCRAPER_TIER_RETRIES_<TIER>` (e.g. `SCRAPER_TIER_RETRIES_TIER_4=2`)
 - `SCRAPER_TIER_RETRY_ON` — failure classes eligible for a same-tier retry (default `timeout,rate_limited,connection`; widen to include `botwall,http_block` behind a rotating residential proxy so each retry gets a fresh IP). Retries are bounded by `SCRAPER_DEADLINE_S`; enabling them on the paid Firecrawl tier bills per attempt
 - `SCRAPER_LOGIN_HOOK` — `pkg.module:func` returning `{cookie: value}` for a host (see [Logged-in sessions](#logged-in-sessions))
 - `SCRAPER_EXTRACTION_FILE` — per-domain extraction prefs JSON (default `config/extraction.json`)

@@ -15,6 +15,7 @@ says one Chrome version, the header says another).
 from __future__ import annotations
 
 import hashlib
+import os
 from urllib.parse import urlsplit
 
 from .. import session_cache
@@ -22,8 +23,11 @@ from ..egress import requests_proxies, add_wire_bytes
 from ..normalize import html_to_markdown, pdf_bytes_to_text
 from ..policy.gates import BotWall, check, is_cf_challenge
 
-NAME = "tier1_http"
+NAME = "tier_2"
 PAID = False
+
+# Per-tier request timeout (seconds); override with SCRAPER_TIER_2_TIMEOUT_S.
+_TIMEOUT_S = float(os.getenv("SCRAPER_TIER_2_TIMEOUT_S", "15"))
 
 # Recent Chrome JA3 targets available in curl_cffi 0.15.x. A small spread of real
 # versions mirrors how live traffic is distributed across Chrome releases.
@@ -43,7 +47,7 @@ def fetch(url: str) -> str:
     # against Tier 1's distinct impersonate UA would be a mismatch tell.
     cookie = session_cache.cookie_header(url, include_cache=False)
     headers = {"Cookie": cookie} if cookie else None
-    r = cffi.get(url, timeout=15, allow_redirects=True,
+    r = cffi.get(url, timeout=_TIMEOUT_S, allow_redirects=True,
                  impersonate=_impersonate_for(url),
                  proxies=requests_proxies(), headers=headers)
     add_wire_bytes(len(r.content))  # count even on a block — failed fetches burn bandwidth too

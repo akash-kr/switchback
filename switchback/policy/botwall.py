@@ -149,6 +149,40 @@ def _parse_skip_urls_file(path: str) -> dict[str, str]:
     return out
 
 
+# Tiers were renamed to plain tier_1..tier_7 in 0.5.0. A pre-rename DB persists a
+# host's learned winning_tier / tier_stats under the old names; migrate them on
+# load so routing survives the upgrade instead of re-probing the cascade fresh.
+_TIER_RENAME = {
+    "tier0_apis": "tier_1",
+    "tier1_http": "tier_2",
+    "tier2_cloudscraper": "tier_3",
+    "tier3_browser": "tier_4",
+    "tier3b_camoufox": "tier_5",
+    "tier_residential": "tier_6",
+    "tier4_firecrawl": "tier_7",
+}
+
+
+def _migrate_tier_names(hosts: dict) -> bool:
+    """Remap pre-rename tier names in persisted host records. Idempotent."""
+    changed = False
+    for rec in hosts.values():
+        if rec.get("winning_tier") in _TIER_RENAME:
+            rec["winning_tier"] = _TIER_RENAME[rec["winning_tier"]]
+            changed = True
+        stats = rec.get("tier_stats")
+        if isinstance(stats, dict):
+            for old, new in _TIER_RENAME.items():
+                if old in stats:
+                    # Merge into the new key if it somehow already exists, else move.
+                    dst = stats.setdefault(new, {"ok": 0, "miss": 0})
+                    src = stats.pop(old)
+                    dst["ok"] += src.get("ok", 0)
+                    dst["miss"] += src.get("miss", 0)
+                    changed = True
+    return changed
+
+
 def load_db() -> dict:
     db = {"version": 2, "updated_at": "", "hosts": {}, "urls": {}}
     if os.path.exists(DB_PATH):
@@ -159,7 +193,7 @@ def load_db() -> dict:
             logger.error(f"botwall: load failed ({e}); starting fresh")
     hosts = db.setdefault("hosts", {})
     urls = db.setdefault("urls", {})
-    changed = False
+    changed = _migrate_tier_names(hosts)
     for host, reason in SEED_HOSTS.items():
         if host not in hosts:
             hosts[host] = _new_record(reason=reason, status="skip")
@@ -305,7 +339,7 @@ def _track_egress(host: str, tier: str, outcome: str, db: dict) -> None:
     unescalated. We don't count the residential tier's own misses (circular)."""
     if not PROMOTE_EGRESS_AFTER or outcome not in _EGRESS_OUTCOMES:
         return
-    if tier == "tier_residential":
+    if tier == "tier_6":  # residential egress — don't count its own misses
         return
     rec = db.get("hosts", {}).get(host)
     if rec is None or rec.get("needs_egress"):
