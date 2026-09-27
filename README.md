@@ -62,6 +62,14 @@ python -m switchback https://example.com/article    # JSON on stdout — bridge 
 
 That's the whole loop. Add tiers as you need them (see [Install](#install)).
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/akash-kr/switchback/main/docs/assets/demo.gif" width="880"
+       alt="switchback scraping a Cloudflare-walled Quora page: tier_1 to tier_4 come up empty or walled, tier_5 (Camoufox) returns clean Markdown in 20.2s; on the second run botwall remembers the host and goes straight to tier_5">
+</p>
+
+<sub>A real run, time-compressed. Run 1 climbs the cascade until a tier gets through. Run 2 hits the
+same host, and botwall starts at the tier that won last time. The paid tier is never touched.</sub>
+
 ## The cascade (stop at first success)
 
 | Tier | Strategy | Cost |
