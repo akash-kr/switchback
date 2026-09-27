@@ -55,10 +55,23 @@ _BOTWALL_MARKERS = (
     ("humans only",                         "datadome"),    # DataDome (e.g. Glassdoor)
     ("access denied",                       "akamai"),      # Akamai / generic 403
     ("unusual traffic from your computer",  "google"),      # Google bot interstitial
+    ("you have been blocked",               "cloudflare"),  # CF WAF block ("Sorry, you have been blocked")
     ("are you a human",                     "generic"),
     ("ddos protection by",                  "generic"),     # generic CDN challenge
 )
 _BOTWALL_HEAD_CHARS = 600
+
+# Inline base64 images: `![](data:image/svg+xml;base64,…)`. Block pages often
+# embed their logo this way, and a single one can run to thousands of chars —
+# enough to push the block phrase out of the head window and to clear the length
+# floor on its own. Base64 never contains ')' or whitespace, so this is exact.
+_INLINE_DATA_URI = re.compile(r"\(data:[^)\s]*\)")
+
+
+def _strip_inline_data(md: str) -> str:
+    """`md` with inline data-URI payloads emptied (`![](data:…)` -> `![]()`), so
+    the gates measure and scan text, not image bytes."""
+    return _INLINE_DATA_URI.sub("()", md)
 
 
 def classify_botwall(md: str | None) -> str | None:
@@ -67,7 +80,7 @@ def classify_botwall(md: str | None) -> str | None:
     the content doesn't look like a wall. First marker match wins."""
     if not md:
         return None
-    head = md[:_BOTWALL_HEAD_CHARS].lower()
+    head = _strip_inline_data(md)[:_BOTWALL_HEAD_CHARS].lower()
     for marker, vendor in _BOTWALL_MARKERS:
         if marker in head:
             return vendor
@@ -189,13 +202,15 @@ def check(url: str, md: str | None) -> str:
     vendor = classify_botwall(md)
     if vendor:
         raise BotWall(f"bot-wall / block page detected ({vendor})", vendor=vendor)
+    # Measure text, not inline image bytes; the caller still gets `md` unchanged.
+    text = _strip_inline_data(md or "")
     gate = min_len_for(url)
-    n = len(md) if md else 0
+    n = len(text)
     if n < gate:
         raise ShortContent(f"body too short: {n} < {gate}")
     # Length cleared, but is it actually content? Reject shells/placeholders so a
     # tier falls through instead of returning a confident false-positive success.
-    shell = _content_shell_reason(md or "")
+    shell = _content_shell_reason(text)
     if shell:
         raise ShortContent(f"no article content: {shell}")
     return md
