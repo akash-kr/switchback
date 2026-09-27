@@ -11,6 +11,8 @@
 
 <div align="center">
 
+# switchback — Python web scraper: any URL → clean Markdown
+
 **One cost-ordered scrape cascade — HTTP → stealth browser → paid — shared by every tool.**
 
 Give it a URL; it tries the cheapest way to get clean Markdown first and only escalates
@@ -20,6 +22,8 @@ to a heavier (slower, costlier) tier when the cheap one is walled. Stops at the 
 [![Python](https://img.shields.io/pypi/pyversions/switchback)](https://pypi.org/project/switchback/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![CI](https://github.com/akash-kr/switchback/actions/workflows/ci.yml/badge.svg)](https://github.com/akash-kr/switchback/actions/workflows/ci.yml)
+
+⭐ If switchback saved you a paid-API bill, a star helps others find it.
 
 </div>
 
