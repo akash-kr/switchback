@@ -1,0 +1,30 @@
+{
+  "title": "switchback input",
+  "type": "object",
+  "schemaVersion": 1,
+  "properties": {
+    "startUrls": {
+      "title": "Start URLs",
+      "type": "array",
+      "description": "Pages to convert to Markdown. Each URL is scraped on its own, cheapest method first.",
+      "editor": "requestListSources",
+      "prefill": [{ "url": "https://en.wikipedia.org/wiki/Web_scraping" }]
+    },
+    "outputFormat": {
+      "title": "Output format",
+      "type": "string",
+      "description": "markdown: whole page, boilerplate stripped. markdown_trimmed: extra ad/nav lines removed. html: raw HTML as fetched. html_selectors: cleaned HTML, not converted.",
+      "editor": "select",
+      "enum": ["markdown", "markdown_trimmed", "html", "html_selectors"],
+      "enumTitles": ["Markdown", "Markdown (trimmed)", "Raw HTML", "Cleaned HTML"],
+      "default": "markdown"
+    },
+    "rememberSites": {
+      "title": "Remember what works per site",
+      "type": "boolean",
+      "description": "Save which method succeeded on each site to a key-value store in your account (switchback-memory), so later runs skip straight to it. Turn off to start fresh every run.",
+      "default": true
+    }
+  },
+  "required": ["startUrls"]
+}

@@ -1,0 +1,39 @@
+{
+  "actorSpecification": 1,
+  "fields": {},
+  "views": {
+    "overview": {
+      "title": "Overview",
+      "transformation": {
+        "fields": ["url", "ok", "tier", "outcome", "latencyMs", "markdown"]
+      },
+      "display": {
+        "component": "table",
+        "properties": {
+          "url": { "label": "URL", "format": "link" },
+          "ok": { "label": "OK", "format": "boolean" },
+          "tier": { "label": "Won at tier", "format": "text" },
+          "outcome": { "label": "Outcome", "format": "text" },
+          "latencyMs": { "label": "Time (ms)", "format": "number" },
+          "markdown": { "label": "Markdown", "format": "text" }
+        }
+      }
+    },
+    "failures": {
+      "title": "Why pages failed",
+      "transformation": {
+        "fields": ["url", "outcome", "errorClass", "statusCode", "attempts"]
+      },
+      "display": {
+        "component": "table",
+        "properties": {
+          "url": { "label": "URL", "format": "link" },
+          "outcome": { "label": "Outcome", "format": "text" },
+          "errorClass": { "label": "Reason", "format": "text" },
+          "statusCode": { "label": "HTTP status", "format": "number" },
+          "attempts": { "label": "Tiers tried", "format": "array" }
+        }
+      }
+    }
+  }
+}

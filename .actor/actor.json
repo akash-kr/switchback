@@ -1,0 +1,16 @@
+{
+  "actorSpecification": 1,
+  "name": "switchback-url-to-markdown",
+  "title": "URL to Markdown Scraper for Hard Pages (switchback)",
+  "description": "Turn any URL into clean Markdown for LLMs and RAG. Tries cheap HTTP first and escalates to a stealth browser only when a site blocks it. Pay only for pages that succeed.",
+  "version": "0.1",
+  "buildTag": "latest",
+  "dockerfile": "./Dockerfile",
+  "dockerContextDir": "../",
+  "input": "./input_schema.json",
+  "storages": {
+    "dataset": "./dataset_schema.json"
+  },
+  "defaultMemoryMbytes": 2048,
+  "readme": "./README.md"
+}

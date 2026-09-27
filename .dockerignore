@@ -1,0 +1,10 @@
+.git
+state/
+dist/
+build/
+*.egg-info
+.venv/
+.env
+**/__pycache__
+storage/
+graphify-out/
