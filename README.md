@@ -68,7 +68,7 @@ That's the whole loop. Add tiers as you need them (see [Install](#install)).
 |---|---|---|
 | tier_1 | Direct APIs / mirrors (arxiv, wikipedia, EuropePMC; extend: job boards) | free, cleanest |
 | tier_2 | Plain HTTP + TLS impersonation (`curl_cffi`), incl. PDFs | cheap |
-| tier_3 | Cloudflare / anti-bot solver (`cloudscraper`, install `.[cloudflare]`) | cheap-ish (~5s/host) |
+| tier_3 | Cloudflare / anti-bot solver (`cloudscraper`, install `.[cloudflare]`) — on by default (opt out: `SCRAPER_DISABLE_CLOUDSCRAPER`) | cheap-ish (~5s/host) |
 | tier_4 | Stealth headless browser (`patchright`, Chromium) | heavy |
 | tier_5 | Camoufox (Firefox stealth) — **on by default** (opt out: `SCRAPER_DISABLE_CAMOUFOX`) | heavy + slow (~40s on hard CF) |
 | tier_6 | Residential-IP browser over CDP (`BU_CDP_URL`) — off unless configured | heavy (remote egress) |
@@ -129,6 +129,30 @@ fix) and the cascade falls through — they are never silently skipped. Checklis
   the old `SCRAPER_CLOUDSCRAPER_TIMEOUT_S` is still honored) so an unsolvable
   challenge can't eat the per-URL deadline before the browser tier runs. Lower it
   (e.g. `12`) if tier_3 rarely wins on your hosts.
+
+### Scraping URLs other people submit
+
+If the URLs come from users you don't fully trust (a "save this link" box, a
+feed reader, a public API), two opt-in switches harden the engine. Both default
+to off, so nothing changes unless you set them:
+
+```bash
+export SCRAPER_DISABLE_CLOUDSCRAPER=1   # tier_3 runs site JavaScript outside a browser sandbox
+export SCRAPER_BROWSER_BLOCK_PRIVATE=1  # browser tiers can't reach your machine's or network's private services
+```
+
+- **Why tier_3:** solving a Cloudflare JS challenge means running JavaScript the
+  site sent, in js2py or Node's `vm` module, and neither is a security boundary.
+  The browser tiers run page JavaScript inside the browser's own sandbox instead.
+- **Install tier_4's browser first** (`patchright install chromium`): with tier_3
+  off, it is what clears Cloudflare. `--doctor` shows tier_3 as `off` and still
+  exits 0.
+- **Why the browser guard:** a scraped page can redirect, frame or `fetch()` an
+  address like `http://127.0.0.1:…` or a cloud metadata endpoint, and whatever
+  answers comes back as scraped content. With the guard, those requests (and
+  WebSockets) are refused and service workers are disabled so they can't route
+  around it. Check the URL you pass in yourself too: the guard covers what the
+  *page* asks for in the browser tiers, not the HTTP tiers' own requests.
 
 **Verify readiness on the box** with the preflight check (doubles as a healthcheck
 — exit 0 when the capable tiers are ready):
@@ -231,6 +255,8 @@ export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
 - `SCRAPER_DISABLE_FIRECRAWL` — skip tier_7
 - `FIRECRAWL_API_KEY` — enable tier_7
 - `SCRAPER_DISABLE_CAMOUFOX` — turn off tier_5 (on by default; needs `pip install camoufox` + `camoufox fetch`)
+- `SCRAPER_DISABLE_CLOUDSCRAPER` — turn off tier_3 (on by default). Recommended when you scrape URLs other people submit; see [Scraping URLs other people submit](#scraping-urls-other-people-submit)
+- `SCRAPER_BROWSER_BLOCK_PRIVATE` — opt-in, off by default: tiers 4 and 5 refuse any request a page makes to a loopback, private, link-local (incl. cloud metadata) or CGNAT address
 - `BU_CDP_URL` — enable tier_6 residential browser by pointing at a CDP endpoint
 - `SCRAPER_PROXY` — route *all* tiers/URLs through a proxy
 - `SCRAPER_EGRESS_PROXY` — route only walled hosts through a proxy (see [Cost-scoped residential egress](#cost-scoped-residential-egress))

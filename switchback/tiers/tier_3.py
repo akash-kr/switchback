@@ -11,6 +11,12 @@ PyPI is frozen at 1.2.71 (v1/v2 only, no stealth) — see pyproject.toml.
 
 On hard CAPTCHA variants with no solver configured this raises and the cascade
 falls through to the stealth browser (Tier 3).
+
+ON by default — opt out with SCRAPER_DISABLE_CLOUDSCRAPER=1. Solving a JS challenge
+runs JavaScript the *site* sent, in js2py or Node's `vm` module, and neither is a
+security boundary. Deployments that scrape URLs submitted by people they don't
+trust should opt out; the browser tiers still clear Cloudflare, running page JS
+inside the browser's own sandbox.
 """
 from __future__ import annotations
 
@@ -33,6 +39,11 @@ PAID = False
 # (v1/v2, no stealth) instead of the 3.x Enhanced Edition this tier needs.
 _INSTALL_HINT = ('pip install "cloudscraper @ '
                  'git+https://github.com/VeNoMouS/cloudscraper@3.0.0"')
+
+
+def disabled() -> bool:
+    """On by default; opt out with SCRAPER_DISABLE_CLOUDSCRAPER=1 (see module doc)."""
+    return bool(os.getenv("SCRAPER_DISABLE_CLOUDSCRAPER"))
 
 
 def available() -> tuple[bool, str]:
