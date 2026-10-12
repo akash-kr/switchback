@@ -22,7 +22,7 @@ from .normalize import active_format, appendix, capture_into, output_format_scop
 from .policy import botwall
 from .policy.gates import (BotWall, RateLimited, ShortContent, Unavailable,
                            classify_error, host_of)
-from .tiers import TIERS, INDEX
+from .tiers import TIERS, INDEX, tier_1
 from .tracing import Attr, flush, span
 
 logger = logging.getLogger(__name__)
@@ -354,7 +354,11 @@ def _run_cascade(url, host, db, root, t0, deadline, extras=None) -> ScrapeOutcom
     transient = 0  # count of rate_limited/timeout misses so far (drives backoff)
     start = _start_index(url, db)
     for i, tier in enumerate(TIERS):
-        if i < start:
+        # A host's learned start skips tier_1, except for an opted-in YouTube URL:
+        # youtube.com may have been won by a browser tier before transcripts were
+        # on. If tier_1 has no transcript, the next tiers are still skipped up to start.
+        if i < start and not (tier.NAME == "tier_1" and tier_1.youtube_enabled()
+                              and tier_1.YOUTUBE_RE.search(url)):
             continue
 
         # Env/feature gate (e.g. paid Firecrawl off, residential not wired).

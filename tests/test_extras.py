@@ -513,6 +513,28 @@ def test_youtube_blocked_ip_retries_via_egress_proxy(monkeypatch):
     assert tier_1.fetch("https://youtu.be/dQw4w9WgXcQ") is None and seen == [None]
 
 
+def test_youtube_tried_first_despite_learned_start(monkeypatch):
+    """youtube.com learned tier_5: an opted-in video still tries tier_1 first, and
+    without a transcript resumes at tier_5 (tier_2 stays skipped). Off: unchanged."""
+    calls = []
+    def t(name, md):
+        return _tier(name, lambda u: calls.append(name) or md)
+    monkeypatch.setattr(orch, "TIERS", [t("tier_1", None), t("tier_2", "x" * 3000),
+                                        t("tier_5", "y" * 3000)])
+    monkeypatch.setattr(orch, "INDEX", {"tier_1": 0, "tier_2": 1, "tier_5": 2})
+    monkeypatch.setattr(orch.botwall, "winning_tier", lambda h, db: "tier_5")
+    yt = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+    api.scrape_detailed(yt)
+    assert calls == ["tier_5"]
+    monkeypatch.setenv("SCRAPER_YOUTUBE", "1")
+    calls.clear()
+    [o] = api.scrape_detailed(yt)
+    assert calls == ["tier_1", "tier_5"] and o.source_method == "tier_5"
+    calls.clear()
+    api.scrape_detailed("https://example.test/page")
+    assert calls == ["tier_5"]
+
+
 def test_youtube_highlight_cites_timestamp():
     md = ("# T\n\n## Transcript\n\n[0:00](https://www.youtube.com/watch?v=abcdefghijk&t=0s) intro\n\n"
           "[12:05](https://www.youtube.com/watch?v=abcdefghijk&t=725s) attention is all you need")

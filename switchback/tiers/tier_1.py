@@ -55,7 +55,7 @@ def fetch(url: str) -> str | None:
     if PMC_RE.search(url):
         return _europepmc(url)
     m = YOUTUBE_RE.search(url)
-    if m and os.getenv("SCRAPER_YOUTUBE") in ("1", "true", "True"):  # opt-in: changes output
+    if m and youtube_enabled():
         return _youtube(m.group(1), url)
     return None  # no mirror — fall through
 
@@ -98,6 +98,11 @@ def _europepmc(url: str) -> str:
     if len(r.text) < 1000:
         raise RuntimeError(f"europepmc empty: {len(r.text)}")
     return check(url, html_to_markdown(r.text, base_url=url))
+
+
+def youtube_enabled() -> bool:
+    """Opt-in (SCRAPER_YOUTUBE=1): transcripts change what YouTube URLs return."""
+    return os.getenv("SCRAPER_YOUTUBE") in ("1", "true", "True")
 
 
 def _youtube(video_id: str, url: str) -> str | None:
