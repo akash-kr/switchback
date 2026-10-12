@@ -2,7 +2,8 @@
 
 curl_cffi impersonates a real Chrome TLS handshake, which clears many naive bot
 walls without a browser. Handles PDFs inline, and office/ebook files when
-markitdown is installed (`switchback[documents]`). Fast and cheap.
+SCRAPER_DOCUMENTS=1 and markitdown is installed (`switchback[documents]`).
+Fast and cheap.
 
 The bare "chrome" alias resolves to an old default; we pin recent targets and
 rotate them deterministically per host, so our traffic isn't one shared JA3 yet
@@ -71,7 +72,9 @@ def fetch(url: str) -> str:
         finally:
             r.close()
         return check(url, text)
-    doc_ext = doc_extension(ctype, r.url)
+    # Opt-in: converting changes what these URLs return (see CONTRIBUTING.md).
+    doc_ext = (doc_extension(ctype, r.url)
+               if os.getenv("SCRAPER_DOCUMENTS") in ("1", "true", "True") else None)
     if doc_ext:
         # Office/ebook file. Without markitdown (or if it can't read the file) we
         # fall through to the HTML path below, exactly as before this was added.

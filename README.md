@@ -96,13 +96,15 @@ pip install "switchback[firecrawl]"    # + tier_7 paid API (needs FIRECRAWL_API_
 pip install "switchback[tracing]"      # + OpenTelemetry -> any OTLP backend
 pip install "switchback[all]"          # all of the above
 pip install "switchback[mcp]"          # + MCP server for agents (switchback-mcp)
-pip install "switchback[youtube]"      # + YouTube transcripts in tier_1
-pip install "switchback[documents]"    # + .docx/.pptx/.xlsx/.xls/.epub → markdown in tier_2
+pip install "switchback[youtube]"      # + YouTube transcripts in tier_1 (and set SCRAPER_YOUTUBE=1)
+pip install "switchback[documents]"    # + .docx/.pptx/.xlsx/.xls/.epub → markdown in tier_2 (and set SCRAPER_DOCUMENTS=1)
 ```
 
 `mcp`, `youtube` and `documents` are not part of `[all]`, so upgrading an existing
 `[all]` install doesn't pull new dependencies (`documents` brings markitdown and
-onnxruntime). Add them by name.
+onnxruntime). Add them by name. YouTube transcripts and office files also need
+their switch (`SCRAPER_YOUTUBE=1`, `SCRAPER_DOCUMENTS=1`), because they change what
+those URLs return; without it they behave exactly as before, installed or not.
 
 For tier_3's **full** v3 JS-VM + Turnstile + stealth, install the Enhanced Edition
 3.x fork (PyPI's `cloudscraper` is the older v1/v2 — PyPI forbids pinning a
@@ -324,6 +326,8 @@ export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
 - `SCRAPER_HIGHLIGHTS_TOP_K` — highlights returned per URL (5)
 - `SCRAPER_HIGHLIGHTS_MIN_SCORE` — Jev probability below which a passage is dropped (0.5)
 - `SCRAPER_JEV_MODEL` / `SCRAPER_JEV_TIMEOUT_S` — Jev model alias (`jev-latest`) and per-request timeout (20s)
+- `SCRAPER_YOUTUBE` — opt-in: `1` returns YouTube transcripts from tier_1 (needs `switchback[youtube]`)
+- `SCRAPER_DOCUMENTS` — opt-in: `1` converts .docx/.pptx/.xlsx/.xls/.epub to markdown in tier_2 (needs `switchback[documents]`)
 - `SCRAPER_YOUTUBE_LANGS` — transcript languages to try, in order (`en`; e.g. `en,hi`). YouTube blocks most cloud IPs; when it does, the transcript is retried once through `SCRAPER_EGRESS_PROXY` if set
 - `SCRAPER_TRACE_SESSION` — opt-in: capture a Playwright trace (screenshots + DOM + network) per browser-tier attempt, written to `state/traces/`
 - `BENCH_FIRECRAWL_USD` / `BENCH_FIRECRAWL_HARD_MULT` — cost model for the savings report

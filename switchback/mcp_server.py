@@ -40,7 +40,8 @@ async def scrape(url: str, format: str = "markdown", query: str | None = None,
     browsers, then a paid API if configured).
 
     Args:
-        url: the page, PDF, office document or YouTube video to fetch.
+        url: the page or PDF to fetch (office files and YouTube videos too, when
+            the server runs with SCRAPER_DOCUMENTS=1 / SCRAPER_YOUTUBE=1).
         format: markdown (default) | markdown_trimmed | html | html_selectors.
         query: optional question; adds `highlights`, the passages that answer it,
             each with a score and a link that jumps to that text on the page.

@@ -4,9 +4,9 @@ Cheapest, cleanest, most reliable. Pattern-routed: returns None when no mirror
 matches (caller falls through to Tier 1). Bypasses the botwall skip-list because
 these are open, stable endpoints — not the scraped page.
 
-YouTube videos return their transcript when youtube-transcript-api is installed
-(`switchback[youtube]`); without it, or when a video has no captions, the URL
-falls through to the HTTP tiers exactly as before.
+YouTube videos return their transcript when SCRAPER_YOUTUBE=1 and
+youtube-transcript-api is installed (`switchback[youtube]`); otherwise, or when a
+video has no captions, the URL falls through to the HTTP tiers exactly as before.
 
 Extend here with career-ops-style structured providers (greenhouse/lever/ashby).
 Web *search* (query → URLs) is a different shape and lives in switchback/search.py
@@ -55,7 +55,7 @@ def fetch(url: str) -> str | None:
     if PMC_RE.search(url):
         return _europepmc(url)
     m = YOUTUBE_RE.search(url)
-    if m:
+    if m and os.getenv("SCRAPER_YOUTUBE") in ("1", "true", "True"):  # opt-in: changes output
         return _youtube(m.group(1), url)
     return None  # no mirror — fall through
 

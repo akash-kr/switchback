@@ -410,8 +410,18 @@ def _patch_cffi(monkeypatch, resp):
     monkeypatch.setattr(tier_2.session_cache, "cookie_header", lambda *a, **k: None)
 
 
+def test_tier2_docs_off_by_default(monkeypatch):
+    """Without SCRAPER_DOCUMENTS the old path runs, even with markitdown installed."""
+    ctype = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    _patch_cffi(monkeypatch, _CffiResp(b"<p>" + b"legacy body text " * 200 + b"</p>",
+                                       ctype, "https://a.test/r.docx"))
+    monkeypatch.setattr(tier_2, "doc_bytes_to_markdown", lambda *a: pytest.fail("converted"))
+    assert "legacy body text" in tier_2.fetch("https://a.test/r.docx")
+
+
 def test_tier2_converts_docx(monkeypatch):
     pytest.importorskip("markitdown")
+    monkeypatch.setenv("SCRAPER_DOCUMENTS", "1")
     ctype = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
     _patch_cffi(monkeypatch, _CffiResp(_docx_bytes(), ctype, "https://a.test/r.docx"))
     md = tier_2.fetch("https://a.test/r.docx")
@@ -420,6 +430,7 @@ def test_tier2_converts_docx(monkeypatch):
 
 def test_tier2_docx_without_markitdown_takes_old_path(monkeypatch):
     """No markitdown → the pre-existing HTML path runs, as before this feature."""
+    monkeypatch.setenv("SCRAPER_DOCUMENTS", "1")
     ctype = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
     _patch_cffi(monkeypatch, _CffiResp(b"<p>" + b"legacy body text " * 200 + b"</p>",
                                        ctype, "https://a.test/r.docx"))
@@ -439,7 +450,15 @@ def test_youtube_url_matching():
     assert m("https://www.youtube.com/@channel") is None
 
 
+def test_youtube_off_by_default(monkeypatch):
+    """Without SCRAPER_YOUTUBE, YouTube URLs skip tier_1, even with the library."""
+    _fake_yt(monkeypatch, [(0.0, "hello")])
+    monkeypatch.delenv("SCRAPER_YOUTUBE")
+    assert tier_1.fetch("https://youtu.be/dQw4w9WgXcQ") is None
+
+
 def test_youtube_without_library_falls_through(monkeypatch):
+    monkeypatch.setenv("SCRAPER_YOUTUBE", "1")
     monkeypatch.setitem(sys.modules, "youtube_transcript_api", None)   # ImportError
     assert tier_1.fetch("https://www.youtube.com/watch?v=dQw4w9WgXcQ") is None
 
@@ -460,6 +479,7 @@ def _fake_yt(monkeypatch, snippets=None, error=None):
     monkeypatch.setitem(sys.modules, "youtube_transcript_api", mod)
     monkeypatch.setitem(sys.modules, "youtube_transcript_api.proxies", prox)
     monkeypatch.setattr(tier_1, "_youtube_meta", lambda url: ("A Talk", "A Channel"))
+    monkeypatch.setenv("SCRAPER_YOUTUBE", "1")
 
 
 def test_youtube_transcript(monkeypatch):
@@ -485,6 +505,7 @@ def test_youtube_blocked_ip_retries_via_egress_proxy(monkeypatch):
     monkeypatch.setattr(tier_1, "_yt_snippets", fake)
     monkeypatch.setattr(tier_1, "_youtube_meta", lambda url: ("", ""))
     monkeypatch.setenv("SCRAPER_EGRESS_PROXY", "http://user:pass@proxy.test:80")
+    monkeypatch.setenv("SCRAPER_YOUTUBE", "1")
     md = tier_1.fetch("https://youtu.be/dQw4w9WgXcQ")
     assert seen == [None, "http://user:pass@proxy.test:80"] and "via proxy" in md
     monkeypatch.delenv("SCRAPER_EGRESS_PROXY")

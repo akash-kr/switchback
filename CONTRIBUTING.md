@@ -45,9 +45,10 @@ Rules for any new feature:
 - **CLI and HTTP JSON gain a key only when the request asked for it** (see
   `result_dict` in `switchback/api.py`).
 - **A new dependency gets its own extra and stays out of `[all]`**, and a missing
-  dependency means the old behaviour. Behaviour that switches on just because a
-  package is importable also reaches users who already had that package
-  installed, so call it out in the CHANGELOG.
+  dependency means the old behaviour. Installing a package is not opt-in: users
+  may already have it for something else. Anything that changes what an existing
+  call returns stays off until a `SCRAPER_*` variable turns it on (see
+  `SCRAPER_YOUTUBE`, `SCRAPER_DOCUMENTS`).
 - **The pinned tests are the contract.** The "backward compatibility" tests in
   `tests/test_extras.py` pin the result fields and the CLI/HTTP JSON keys, and CI
   runs them. If one fails, the change is breaking: redesign the change, don't

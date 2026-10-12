@@ -23,14 +23,15 @@ versioning while pre-1.0.
 - **MCP server** — `switchback-mcp` (stdio) exposes `scrape` and `search` as tools.
   Install with `switchback[mcp]`.
 - **YouTube transcripts** in tier_1 (title, channel, timestamped transcript linked
-  to the moment in the video). Install with `switchback[youtube]`; without it, or
-  for videos with no captions, YouTube URLs go through the cascade as before.
+  to the moment in the video). Opt in with `SCRAPER_YOUTUBE=1` plus
+  `switchback[youtube]`; otherwise, or for videos with no captions, YouTube URLs
+  go through the cascade as before.
   YouTube blocks most cloud IPs; a blocked request is retried once through
   `SCRAPER_EGRESS_PROXY` when one is configured. Transcript highlights cite the
   timestamp in the video.
 - **Office and ebook files** (.docx, .pptx, .xlsx, .xls, .epub) converted to
-  markdown in tier_2 via markitdown. Install with `switchback[documents]`; without
-  it these URLs are handled exactly as before.
+  markdown in tier_2 via markitdown. Opt in with `SCRAPER_DOCUMENTS=1` plus
+  `switchback[documents]`; otherwise these URLs are handled exactly as before.
 
 The new extras are deliberately not added to `[all]`, so upgrading an existing
 `[all]` install pulls no new dependencies.
