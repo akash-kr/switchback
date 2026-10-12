@@ -10,7 +10,9 @@ versioning while pre-1.0.
 - **Agent-ready extras, all opt-in** (`scrape(..., state=, appendix=, query=)`,
   the same flags on `scrape_detailed`, `--state` / `--appendix` / `--query` on the
   CLI, and `state` / `appendix` / `query` in the HTTP `/scrape` body). Without them
-  results, CLI JSON and HTTP JSON are unchanged.
+  results, CLI JSON and HTTP JSON are unchanged: `ScrapeResult` and `ScrapeOutcome`
+  keep exactly their fields. With them, results are the new subclasses
+  `ScrapeResultWithExtras` / `ScrapeOutcomeWithExtras`.
   - `state` — the page's embedded JSON (Next.js `__NEXT_DATA__`, Nuxt,
     `window.__X__` globals, JSON-LD).
   - `appendix` — nav/header/footer/aside as separate markdown regions.

@@ -15,7 +15,7 @@ import os
 import random
 import time
 from contextlib import nullcontext
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 
 from . import content_cache, egress, session_cache
 from .normalize import active_format, appendix, capture_into, output_format_scope
@@ -116,7 +116,13 @@ class ScrapeResult:
     markdown: str       # the rendered content (format named by `format`)
     source_method: str  # tier NAME that won
     format: str = "markdown"  # markdown | markdown_trimmed | html | html_selectors
-    # Opt-in extras: None unless requested (see Extras).
+
+
+@dataclass
+class ScrapeResultWithExtras(ScrapeResult):
+    """A ScrapeResult plus the opt-in extras. Returned only when an extra was
+    requested, so a plain scrape() keeps exactly the ScrapeResult shape (fields,
+    asdict(), astuple()). Each extra is None unless it was asked for."""
     state: dict | None = None             # embedded page JSON (switchback.state)
     appendix: list[dict] | None = None    # nav/header/footer/aside as markdown
     highlights: list[dict] | None = None  # passages answering the query, with links
@@ -147,9 +153,21 @@ class ScrapeOutcome:
     wire_bytes: int = 0            # bytes transferred over the network (cost basis for proxy GB)
     format: str = "markdown"       # output format of `markdown` (the content field)
     attempts: list[TierAttempt] = field(default_factory=list)
-    state: dict | None = None             # opt-in extras, as on ScrapeResult
+
+
+@dataclass
+class ScrapeOutcomeWithExtras(ScrapeOutcome):
+    """A ScrapeOutcome plus the opt-in extras, as on ScrapeResultWithExtras.
+    Every outcome of a run with extras has this type (failures too, extras None)."""
+    state: dict | None = None
     appendix: list[dict] | None = None
     highlights: list[dict] | None = None
+
+
+def _with_extras(o: ScrapeOutcome) -> ScrapeOutcomeWithExtras:
+    if isinstance(o, ScrapeOutcomeWithExtras):
+        return o
+    return ScrapeOutcomeWithExtras(**{f.name: getattr(o, f.name) for f in fields(ScrapeOutcome)})
 
 
 @dataclass(frozen=True)
@@ -169,7 +187,7 @@ class Extras:
         return self.state or self.appendix
 
 
-def _add_page_extras(res: ScrapeOutcome, cap: dict, extras: Extras) -> None:
+def _add_page_extras(res: ScrapeOutcomeWithExtras, cap: dict, extras: Extras) -> None:
     """Fill state/appendix from the HTML the winning tier rendered. Tiers that
     never had HTML (API mirrors, PDFs, office docs, Firecrawl markdown) give
     empty values. Never raises: an extra must not turn a success into a failure."""
@@ -181,7 +199,7 @@ def _add_page_extras(res: ScrapeOutcome, cap: dict, extras: Extras) -> None:
         res.appendix = appendix(html, base_url) if html else []
 
 
-def _add_highlights(res: ScrapeOutcome, query: str) -> None:
+def _add_highlights(res: ScrapeOutcomeWithExtras, query: str) -> None:
     try:
         from .highlights import highlights
         from .normalize import render
@@ -475,11 +493,14 @@ def _run_cascade(url, host, db, root, t0, deadline, extras=None) -> ScrapeOutcom
                 attempts.append(TierAttempt(tier.NAME, "ok", latency_ms=dt))
                 logger.info(
                     f"{tier.NAME} OK {url} md_len={len(md)} {dt}ms (total {total}ms)")
-                res = ScrapeOutcome(url, True, markdown=md, source_method=tier.NAME,
-                                    final_outcome="ok", latency_ms=total,
-                                    format=active_format(), attempts=attempts)
-                if want_html:
-                    _add_page_extras(res, cap, extras)
+                if not want_html:
+                    return ScrapeOutcome(url, True, markdown=md, source_method=tier.NAME,
+                                         final_outcome="ok", latency_ms=total,
+                                         format=active_format(), attempts=attempts)
+                res = ScrapeOutcomeWithExtras(
+                    url, True, markdown=md, source_method=tier.NAME, final_outcome="ok",
+                    latency_ms=total, format=active_format(), attempts=attempts)
+                _add_page_extras(res, cap, extras)
                 return res
 
     total = int((time.monotonic() - t0) * 1000)
@@ -508,8 +529,10 @@ def run_detailed(urls: list[str], fmt: str | None = None,
         with output_format_scope(fmt):
             for url in urls:
                 res = _run_one(url, db, extras)
-                if res.ok and extras and extras.query:
-                    _add_highlights(res, extras.query)
+                if extras:
+                    res = _with_extras(res)
+                    if res.ok and extras.query:
+                        _add_highlights(res, extras.query)
                 out.append(res)
     finally:
         botwall.save_db(db)
@@ -520,6 +543,9 @@ def run_detailed(urls: list[str], fmt: str | None = None,
 def run(urls: list[str], fmt: str | None = None,
         extras: Extras | None = None) -> list[ScrapeResult]:
     """Successes only (backward-compatible). Use run_detailed() for failures."""
-    return [ScrapeResult(o.url, o.markdown, o.source_method, o.format,
-                         o.state, o.appendix, o.highlights)
+    if not extras:
+        return [ScrapeResult(o.url, o.markdown, o.source_method, o.format)
+                for o in run_detailed(urls, fmt) if o.ok]
+    return [ScrapeResultWithExtras(o.url, o.markdown, o.source_method, o.format,
+                                   o.state, o.appendix, o.highlights)
             for o in run_detailed(urls, fmt, extras) if o.ok]

@@ -11,8 +11,8 @@ from __future__ import annotations
 import sys
 
 from .normalize import output_key
-from .orchestrator import (Extras, ScrapeOutcome, ScrapeResult, TierAttempt, run,
-                           run_detailed)
+from .orchestrator import (Extras, ScrapeOutcome, ScrapeOutcomeWithExtras, ScrapeResult,
+                           ScrapeResultWithExtras, TierAttempt, run, run_detailed)
 from .search import search  # re-export: query → URLs (SearXNG)
 
 
@@ -33,7 +33,9 @@ def scrape(urls: str | list[str], fmt: str | None = None, *, state: bool = False
     For failures with classified reasons + the per-tier cascade, use
     scrape_detailed().
 
-    Opt-in extras (each fills the matching result field; None when not asked):
+    Opt-in extras. Without any, results are plain ScrapeResults, unchanged. With
+    one, results are ScrapeResultWithExtras (a ScrapeResult subclass) whose
+    matching field is filled; the others stay None:
       state=True     embedded page JSON (__NEXT_DATA__, JSON-LD, window.__X__ …)
       appendix=True  the nav/header/footer/aside stripped from the main content
       query="…"      highlights: the passages that answer it, with citation links"""
@@ -53,7 +55,7 @@ def scrape_detailed(urls: str | list[str], fmt: str | None = None, *,
     return run_detailed(urls, fmt, _extras(state, appendix, query))
 
 
-def result_dict(r: ScrapeResult, state: bool = False, appendix: bool = False,
+def result_dict(r: ScrapeResult | ScrapeOutcome, state: bool = False, appendix: bool = False,
                 query: str | None = None) -> dict:
     """The JSON shape the CLI, HTTP service and MCP server return for a result.
     Extra keys appear only when that extra was requested."""

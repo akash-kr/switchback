@@ -12,6 +12,7 @@ import json
 import os
 import sys
 import types
+from dataclasses import asdict, astuple, fields
 
 import pytest
 
@@ -80,13 +81,47 @@ def _isolate(monkeypatch):
 
 # ── backward compatibility ──────────────────────────────────────────────────
 
+# The result shapes as shipped before the extras existed. A default scrape must
+# keep exactly these: users asdict()/astuple() results into their own payloads.
+RESULT_FIELDS = ["url", "markdown", "source_method", "format"]
+OUTCOME_FIELDS = ["url", "ok", "markdown", "source_method", "final_outcome", "error_class",
+                  "status_code", "latency_ms", "egress", "wire_bytes", "format", "attempts"]
+
+
+def test_result_classes_keep_their_fields():
+    assert [f.name for f in fields(orch.ScrapeResult)] == RESULT_FIELDS
+    assert [f.name for f in fields(orch.ScrapeOutcome)] == OUTCOME_FIELDS
+
+
 def test_default_scrape_is_unchanged():
-    """No extras: same markdown as a plain render, extras fields all None."""
+    """No extras: same markdown as a plain render, same types and payload shape."""
     [r] = api.scrape(URL)
     assert r.markdown == N.html_to_markdown(PAGE, base_url=URL)
-    assert (r.state, r.appendix, r.highlights) == (None, None, None)
+    assert type(r) is orch.ScrapeResult and list(asdict(r)) == RESULT_FIELDS
     [o] = api.scrape_detailed(URL)
-    assert o.ok and (o.state, o.appendix, o.highlights) == (None, None, None)
+    assert o.ok and type(o) is orch.ScrapeOutcome and list(asdict(o)) == OUTCOME_FIELDS
+
+
+def _short_tier(url):
+    raise orch.ShortContent("too short")
+
+
+def test_default_failure_is_unchanged(monkeypatch):
+    monkeypatch.setattr(orch, "TIERS", [_tier("fake", _short_tier)])
+    [o] = api.scrape_detailed(URL)
+    assert not o.ok and type(o) is orch.ScrapeOutcome
+    assert api.scrape(URL) == []
+
+
+def test_extras_return_subclasses(monkeypatch):
+    """Opt-in results are subclasses: isinstance checks and old fields still hold."""
+    [r] = api.scrape(URL, query="solar")
+    assert type(r) is orch.ScrapeResultWithExtras and isinstance(r, orch.ScrapeResult)
+    assert list(asdict(r)) == RESULT_FIELDS + ["state", "appendix", "highlights"]
+    assert r.state is None and r.appendix is None and isinstance(r.highlights, list)
+    monkeypatch.setattr(orch, "TIERS", [_tier("fake", _short_tier)])
+    [o] = api.scrape_detailed(URL, state=True)
+    assert not o.ok and type(o) is orch.ScrapeOutcomeWithExtras and o.state is None
 
 
 def test_default_path_does_not_capture(monkeypatch):
@@ -108,7 +143,7 @@ def test_capture_does_not_change_markdown():
 
 def test_positional_scrape_result_still_works():
     r = orch.ScrapeResult("u", "md", "tier_2")
-    assert r.format == "markdown" and r.state is None
+    assert astuple(r) == ("u", "md", "tier_2", "markdown")
 
 
 def test_cli_json_shape_unchanged(monkeypatch, capsys):

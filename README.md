@@ -187,8 +187,12 @@ claude mcp add switchback -- switchback-mcp           # stdio; tools: scrape, se
 
 ## Agent-ready extras
 
-Off by default: without them every result is exactly what it was before. Ask for
-any combination per call; each adds one field (`None` when not asked for).
+Off by default: without them every result is exactly what it was before, the same
+`ScrapeResult` / `ScrapeOutcome` with the same fields, and the same CLI and HTTP
+JSON. Ask for any combination per call; results then come back as
+`ScrapeResultWithExtras` / `ScrapeOutcomeWithExtras` (subclasses, so existing
+`isinstance` checks still hold) with the extras you asked for filled in and the
+rest `None`. The CLI and HTTP JSON add only the keys you asked for.
 
 ```python
 from switchback import scrape
