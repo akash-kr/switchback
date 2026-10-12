@@ -175,7 +175,7 @@ def render(html: str, base_url: str | None = None, fmt: str | None = None) -> st
     - html              the raw HTML, untouched
     - html_selectors    cleaned HTML (per-domain prefs applied), not converted
     """
-    box = getattr(_capture, "box", None)
+    box = current_capture()
     if box is not None:
         box["html"], box["base_url"] = html, base_url
     fmt = _validate(fmt) if fmt is not None else active_format()

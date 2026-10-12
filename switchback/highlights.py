@@ -284,10 +284,9 @@ def fragment_link(url: str, passage: str, edge_words: int = 5) -> str:
 # ── Entry point ─────────────────────────────────────────────────────────────
 
 
-def highlights(markdown: str, query: str, url: str, top_k: int | None = None) -> list[dict]:
+def highlights(markdown: str, query: str, url: str) -> list[dict]:
     """The passages of `markdown` that best answer `query`, best first, each with
     its score, the grader that produced it, and a citation link into `url`."""
-    top_k = TOP_K if top_k is None else top_k
     chunks = passages(markdown)
     if not chunks or not (query or "").strip():
         return []
@@ -309,4 +308,4 @@ def highlights(markdown: str, query: str, url: str, top_k: int | None = None) ->
     ranked.sort(key=lambda t: t[0], reverse=True)
     return [{"text": chunks[i], "score": round(sc, 4), "grader": used,
              "link": cite_link(url, chunks[i], query)}
-            for sc, i in ranked[:top_k]]
+            for sc, i in ranked[:TOP_K]]
