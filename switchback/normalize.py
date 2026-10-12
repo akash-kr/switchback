@@ -1,4 +1,4 @@
-"""Shared content normalization — HTML→Markdown and PDF→text.
+"""Shared content normalization — HTML→Markdown, PDF→text, office docs→Markdown.
 
 Ported from musings-by-hermes/scripts/muse_helpers.py (the most mature version):
 strips boilerplate, promotes lazy-loaded images, resolves relative URLs.
@@ -62,6 +62,32 @@ def active_format() -> str:
     """The format in effect for the current thread: the per-call override if set,
     else the SCRAPER_OUTPUT_FORMAT default."""
     return getattr(_scope, "fmt", None) or OUTPUT_FORMAT
+
+
+# Opt-in raw-HTML capture. The extras that need the page itself (state JSON, the
+# appendix) set a box here around a tier's fetch; render() drops the HTML it was
+# given into the box, so no tier has to change what it returns. The last render
+# wins, which is the one that produced the tier's content (a browser tier's
+# interstitial check renders first, then the real page). Thread-local like the
+# format scope; tiers that render on a worker thread re-apply it with capture_into.
+_capture = threading.local()
+
+
+@contextmanager
+def capture_into(box: dict | None):
+    """Record the HTML render() sees into `box` for the enclosed work (per-thread).
+    None disables capture. Always restored on exit."""
+    prev = getattr(_capture, "box", None)
+    _capture.box = box
+    try:
+        yield box
+    finally:
+        _capture.box = prev
+
+
+def current_capture() -> dict | None:
+    """The active capture box on this thread, for a tier to hand to its worker."""
+    return getattr(_capture, "box", None)
 
 
 def output_key(fmt: str) -> str:
@@ -149,6 +175,9 @@ def render(html: str, base_url: str | None = None, fmt: str | None = None) -> st
     - html              the raw HTML, untouched
     - html_selectors    cleaned HTML (per-domain prefs applied), not converted
     """
+    box = getattr(_capture, "box", None)
+    if box is not None:
+        box["html"], box["base_url"] = html, base_url
     fmt = _validate(fmt) if fmt is not None else active_format()
     if fmt == "html":
         return html or ""
@@ -172,6 +201,40 @@ def html_to_markdown(html: str, base_url: str | None = None) -> str:
     return render(html, base_url)
 
 
+# Page chrome that _clean_html strips from the main content. The appendix keeps it
+# instead, one entry per outermost region, so an agent can ask for the menus,
+# footer or "related" links on demand without them padding the main markdown.
+_APPENDIX_TAGS = ["nav", "header", "footer", "aside"]
+
+
+def appendix(html: str, base_url: str | None = None) -> list[dict]:
+    """The secondary regions of a page as [{"region": tag, "markdown": md}], in
+    page order. Nested regions stay inside their outermost parent. Empty regions
+    are left out; on any failure returns []."""
+    try:
+        from bs4 import BeautifulSoup
+        from markdownify import markdownify
+        from urllib.parse import urljoin
+
+        soup = BeautifulSoup(html or "", "html.parser")
+        for tag in soup(["script", "style", "noscript"]):
+            tag.decompose()
+        regions = []
+        for tag in soup.find_all(_APPENDIX_TAGS):
+            if tag.find_parent(_APPENDIX_TAGS):
+                continue
+            if base_url:
+                for a in tag.find_all("a", href=True):
+                    a["href"] = urljoin(base_url, a["href"])
+            md = (markdownify(str(tag), heading_style="ATX", bullets="-") or "").strip()
+            if md:
+                regions.append({"region": tag.name, "markdown": re.sub(r"\n{3,}", "\n\n", md)})
+        return regions
+    except Exception as e:
+        logger.warning(f"appendix extraction failed: {e}")
+        return []
+
+
 def pdf_bytes_to_text(data: bytes) -> str:
     """Extract text from PDF bytes. In-memory only — nothing written to disk."""
     from pypdf import PdfReader
@@ -179,5 +242,39 @@ def pdf_bytes_to_text(data: bytes) -> str:
     try:
         reader = PdfReader(buf)
         return "\n\n".join((p.extract_text() or "") for p in reader.pages).strip()
+    finally:
+        buf.close()
+
+
+# Office / ebook files converted by markitdown (optional: `pip install
+# "switchback[documents]"`). Matched by Content-Type, else by the URL's extension.
+# PDFs are not listed: they keep their own pypdf path above.
+DOC_TYPES = {
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation": ".pptx",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": ".xlsx",
+    "application/vnd.ms-excel": ".xls",
+    "application/epub+zip": ".epub",
+}
+
+
+def doc_extension(content_type: str, url: str) -> str | None:
+    """The office/ebook extension this response is, or None when it isn't one."""
+    ctype = (content_type or "").split(";")[0].strip().lower()
+    ext = DOC_TYPES.get(ctype)
+    if ext or "html" in ctype:  # a page served as HTML is HTML, whatever its path
+        return ext
+    path = (url or "").lower().split("?")[0].split("#")[0]
+    return next((e for e in DOC_TYPES.values() if path.endswith(e)), None)
+
+
+def doc_bytes_to_markdown(data: bytes, extension: str) -> str:
+    """Convert an office/ebook file to markdown with markitdown. In-memory only.
+    Raises ImportError when markitdown isn't installed."""
+    from markitdown import MarkItDown, StreamInfo
+    buf = io.BytesIO(data)
+    try:
+        res = MarkItDown().convert_stream(buf, stream_info=StreamInfo(extension=extension))
+        return (res.text_content or "").strip()
     finally:
         buf.close()

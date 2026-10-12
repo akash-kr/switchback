@@ -24,8 +24,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from . import session_trace
-from .api import scrape
-from .normalize import output_key
+from .api import result_dict, scrape
 from .reporting import build_report, domain_report
 from .search import search
 from .tracing import setup_logs
@@ -36,6 +35,9 @@ app = FastAPI(title="switchback", version="0.2.0")
 class ScrapeRequest(BaseModel):
     urls: list[str]
     format: str | None = None  # markdown (default) | markdown_trimmed | html | html_selectors
+    state: bool = False        # add the page's embedded JSON
+    appendix: bool = False     # add nav/header/footer/aside as separate markdown
+    query: str | None = None   # add highlights answering this question
 
 
 @app.get("/healthz")
@@ -47,10 +49,11 @@ def healthz() -> dict:
 def scrape_endpoint(req: ScrapeRequest) -> list[dict]:
     """Run URLs through the cascade. Returns successes only (failed URLs omitted).
     Optional "format" selects the output shape; the content key is "markdown" for
-    markdown formats and "html" for html formats."""
-    return [{"url": r.url, "source_method": r.source_method,
-             output_key(r.format): r.markdown}
-            for r in scrape(req.urls, fmt=req.format)]
+    markdown formats and "html" for html formats. Optional "state", "appendix" and
+    "query" add those keys to each result; without them the shape is unchanged."""
+    results = scrape(req.urls, fmt=req.format, state=req.state,
+                     appendix=req.appendix, query=req.query)
+    return [result_dict(r, req.state, req.appendix, req.query) for r in results]
 
 
 @app.get("/search")

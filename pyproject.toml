@@ -53,6 +53,9 @@ browser = ["patchright"]                 # tier3: stealth headless Chromium
 camoufox = ["camoufox[geoip]"]           # tier3b: Firefox stealth (geoip: match locale/tz to proxy IP)
 firecrawl = ["firecrawl-py"]             # tier4: paid last-resort API
 server = ["fastapi", "uvicorn"]          # HTTP service (switchback.server) + /metrics + /traces
+mcp = ["mcp"]                            # MCP server for agents (switchback-mcp)
+youtube = ["youtube-transcript-api>=1.0"]   # tier_1: YouTube transcripts
+documents = ["markitdown[docx,pptx,xlsx,xls]"]  # tier_2: office/ebook files → markdown
 tracing = [                              # OTel → any OTLP backend
     "opentelemetry-sdk",
     "opentelemetry-exporter-otlp-proto-grpc",
@@ -62,11 +65,15 @@ all = [
     "fastapi", "uvicorn",
     "opentelemetry-sdk", "opentelemetry-exporter-otlp-proto-grpc",
 ]
+# Not in `all` on purpose: added in 0.6, kept out so existing `[all]` installs
+# don't suddenly pull markitdown's onnxruntime (via magika) or the MCP SDK.
+# Install them by name: "switchback[mcp,youtube,documents]".
 dev = ["pytest"]
 
 [project.scripts]
 switchback = "switchback.api:_main"
 switchback-server = "switchback.server:main"
+switchback-mcp = "switchback.mcp_server:main"
 
 [project.urls]
 Homepage = "https://github.com/akash-kr/switchback"

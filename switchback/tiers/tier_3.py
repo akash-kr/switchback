@@ -21,7 +21,7 @@ import threading
 
 from .. import egress, session_cache
 from ..egress import requests_proxies
-from ..normalize import html_to_markdown
+from ..normalize import capture_into, current_capture, html_to_markdown
 from ..policy.gates import Unavailable, check
 
 logger = logging.getLogger(__name__)
@@ -145,12 +145,13 @@ def fetch(url: str) -> str:
     # Run the (blocking, occasionally runaway) solve under a hard wall-clock cap.
     # A daemon worker means an abandoned solve can't block process exit; it dies on
     # its own socket timeout shortly after. Thread-locals don't inherit, so the
-    # egress scope is re-applied inside the worker.
+    # egress scope (and any HTML capture) is re-applied inside the worker.
     scoped = egress.in_egress_scope()
+    capture = current_capture()
     box: dict = {}
 
     def work():
-        with egress.egress_scope(scoped):
+        with egress.egress_scope(scoped), capture_into(capture):
             try:
                 box["md"], box["bytes"] = _fetch(url)
             except BaseException as e:  # noqa: BLE001 — propagated to caller below

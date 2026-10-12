@@ -1,7 +1,8 @@
 """Tier 1 — plain HTTP with TLS fingerprint impersonation.
 
 curl_cffi impersonates a real Chrome TLS handshake, which clears many naive bot
-walls without a browser. Handles PDFs inline. Fast and cheap.
+walls without a browser. Handles PDFs inline, and office/ebook files when
+markitdown is installed (`switchback[documents]`). Fast and cheap.
 
 The bare "chrome" alias resolves to an old default; we pin recent targets and
 rotate them deterministically per host, so our traffic isn't one shared JA3 yet
@@ -15,13 +16,17 @@ says one Chrome version, the header says another).
 from __future__ import annotations
 
 import hashlib
+import logging
 import os
 from urllib.parse import urlsplit
 
 from .. import session_cache
 from ..egress import requests_proxies, add_wire_bytes
-from ..normalize import html_to_markdown, pdf_bytes_to_text
+from ..normalize import (doc_bytes_to_markdown, doc_extension, html_to_markdown,
+                         pdf_bytes_to_text)
 from ..policy.gates import BotWall, check, is_cf_challenge
+
+logger = logging.getLogger(__name__)
 
 NAME = "tier_2"
 PAID = False
@@ -66,4 +71,17 @@ def fetch(url: str) -> str:
         finally:
             r.close()
         return check(url, text)
+    doc_ext = doc_extension(ctype, r.url)
+    if doc_ext:
+        # Office/ebook file. Without markitdown (or if it can't read the file) we
+        # fall through to the HTML path below, exactly as before this was added.
+        try:
+            text = doc_bytes_to_markdown(r.content, doc_ext)
+        except ImportError:
+            text = None
+        except Exception as e:
+            logger.info(f"{NAME} {doc_ext} conversion failed for {url}: {e}")
+            text = None
+        if text is not None:
+            return check(url, text)
     return check(url, html_to_markdown(r.text, base_url=r.url))

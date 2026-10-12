@@ -14,10 +14,11 @@ import logging
 import os
 import random
 import time
+from contextlib import nullcontext
 from dataclasses import dataclass, field
 
 from . import content_cache, egress, session_cache
-from .normalize import active_format, output_format_scope
+from .normalize import active_format, appendix, capture_into, output_format_scope
 from .policy import botwall
 from .policy.gates import (BotWall, RateLimited, ShortContent, Unavailable,
                            classify_error, host_of)
@@ -115,6 +116,10 @@ class ScrapeResult:
     markdown: str       # the rendered content (format named by `format`)
     source_method: str  # tier NAME that won
     format: str = "markdown"  # markdown | markdown_trimmed | html | html_selectors
+    # Opt-in extras: None unless requested (see Extras).
+    state: dict | None = None             # embedded page JSON (switchback.state)
+    appendix: list[dict] | None = None    # nav/header/footer/aside as markdown
+    highlights: list[dict] | None = None  # passages answering the query, with links
 
 
 @dataclass
@@ -142,6 +147,51 @@ class ScrapeOutcome:
     wire_bytes: int = 0            # bytes transferred over the network (cost basis for proxy GB)
     format: str = "markdown"       # output format of `markdown` (the content field)
     attempts: list[TierAttempt] = field(default_factory=list)
+    state: dict | None = None             # opt-in extras, as on ScrapeResult
+    appendix: list[dict] | None = None
+    highlights: list[dict] | None = None
+
+
+@dataclass(frozen=True)
+class Extras:
+    """Opt-in additions to a successful result. All off by default; a run without
+    Extras takes exactly the pre-extras code path.
+
+    state     embedded page JSON (needs the fetched HTML)
+    appendix  the page chrome stripped from the main content (needs the HTML)
+    query     rank the content's passages against this question (highlights)"""
+    state: bool = False
+    appendix: bool = False
+    query: str | None = None
+
+    @property
+    def needs_html(self) -> bool:
+        return self.state or self.appendix
+
+
+def _add_page_extras(res: ScrapeOutcome, cap: dict, extras: Extras) -> None:
+    """Fill state/appendix from the HTML the winning tier rendered. Tiers that
+    never had HTML (API mirrors, PDFs, office docs, Firecrawl markdown) give
+    empty values. Never raises: an extra must not turn a success into a failure."""
+    html, base_url = cap.get("html"), cap.get("base_url")
+    if extras.state:
+        from .state import extract_state
+        res.state = extract_state(html) if html else {}
+    if extras.appendix:
+        res.appendix = appendix(html, base_url) if html else []
+
+
+def _add_highlights(res: ScrapeOutcome, query: str) -> None:
+    try:
+        from .highlights import highlights
+        from .normalize import render
+        # html formats carry HTML in `markdown`: grade (and cite) its markdown form.
+        text = (render(res.markdown, res.url, fmt="markdown")
+                if res.format.startswith("html") else res.markdown)
+        res.highlights = highlights(text, query, res.url)
+    except Exception as e:  # never fail a scrape over its highlights
+        logger.warning(f"highlights failed for {res.url}: {e}")
+        res.highlights = []
 
 
 def _dominant_failure(attempts: list[TierAttempt]) -> tuple[str, int | None]:
@@ -223,7 +273,7 @@ def _skipped(url, root, outcome, reason) -> ScrapeOutcome:
     return ScrapeOutcome(url, False, final_outcome=outcome, error_class=outcome)
 
 
-def _run_one(url: str, db: dict) -> ScrapeOutcome:
+def _run_one(url: str, db: dict, extras: Extras | None = None) -> ScrapeOutcome:
     host = host_of(url)
     t0 = time.monotonic()
     deadline = t0 + _DEADLINE_S
@@ -235,7 +285,10 @@ def _run_one(url: str, db: dict) -> ScrapeOutcome:
         if botwall.is_url_skipped(url, db):
             return _skipped(url, root, "url_excluded",
                             db.get("urls", {}).get(url, {}).get("reason", ""))
-        hit = content_cache.get(url, active_format())
+        # The cache keeps content only, so a run that needs the page HTML (state /
+        # appendix) skips the read and fetches; it still refreshes the cache below.
+        hit = (None if extras and extras.needs_html
+               else content_cache.get(url, active_format()))
         if hit:
             md, method = hit
             root.set(Attr.OUTCOME, "cache_hit")
@@ -248,7 +301,7 @@ def _run_one(url: str, db: dict) -> ScrapeOutcome:
         # tiers route through SCRAPER_EGRESS_PROXY (when set); easy hosts stay
         # direct and never spend residential bandwidth.
         with egress.egress_scope(botwall.needs_egress(host, db)):
-            res = _run_cascade(url, host, db, root, t0, deadline)
+            res = _run_cascade(url, host, db, root, t0, deadline, extras)
             # Dead logged-in session? For an authed host with a login hook wired,
             # refresh the cookies once and re-run on a fresh budget — the
             # refreshed cookies overlay every tier (and persist for later runs).
@@ -258,7 +311,7 @@ def _run_one(url: str, db: dict) -> ScrapeOutcome:
                     and session_cache.refresh_login(url)):
                 logger.info(f"re-running after login refresh: {url}")
                 rt = time.monotonic()
-                res = _run_cascade(url, host, db, root, rt, rt + _DEADLINE_S)
+                res = _run_cascade(url, host, db, root, rt, rt + _DEADLINE_S, extras)
             # Record which egress this URL's cascade ran on, while still in scope —
             # "egress" means its bytes were metered residential-proxy bandwidth.
             res.egress = egress.scope_label()
@@ -277,8 +330,9 @@ def _enabled_paid_ahead(i: int) -> bool:
     return False
 
 
-def _run_cascade(url, host, db, root, t0, deadline) -> ScrapeOutcome:
+def _run_cascade(url, host, db, root, t0, deadline, extras=None) -> ScrapeOutcome:
     attempts: list[TierAttempt] = []
+    want_html = bool(extras and extras.needs_html)
     transient = 0  # count of rate_limited/timeout misses so far (drives backoff)
     start = _start_index(url, db)
     for i, tier in enumerate(TIERS):
@@ -352,8 +406,10 @@ def _run_cascade(url, host, db, root, t0, deadline) -> ScrapeOutcome:
                     botwall.record(db, url, tier.NAME, "firecrawl_used")
                 ts = time.monotonic()
                 outcome = exc = status = challenge = unavailable_exc = None
+                cap: dict | None = {} if want_html else None
                 try:
-                    md = tier.fetch(url)
+                    with capture_into(cap) if want_html else nullcontext():
+                        md = tier.fetch(url)
                 except BotWall as e:
                     outcome, exc, challenge = "botwall", e, getattr(e, "vendor", None)
                 except ShortContent as e:
@@ -419,9 +475,12 @@ def _run_cascade(url, host, db, root, t0, deadline) -> ScrapeOutcome:
                 attempts.append(TierAttempt(tier.NAME, "ok", latency_ms=dt))
                 logger.info(
                     f"{tier.NAME} OK {url} md_len={len(md)} {dt}ms (total {total}ms)")
-                return ScrapeOutcome(url, True, markdown=md, source_method=tier.NAME,
-                                     final_outcome="ok", latency_ms=total,
-                                     format=active_format(), attempts=attempts)
+                res = ScrapeOutcome(url, True, markdown=md, source_method=tier.NAME,
+                                    final_outcome="ok", latency_ms=total,
+                                    format=active_format(), attempts=attempts)
+                if want_html:
+                    _add_page_extras(res, cap, extras)
+                return res
 
     total = int((time.monotonic() - t0) * 1000)
     ec, sc = _dominant_failure(attempts)
@@ -436,24 +495,31 @@ def _run_cascade(url, host, db, root, t0, deadline) -> ScrapeOutcome:
                          latency_ms=total, attempts=attempts)
 
 
-def run_detailed(urls: list[str], fmt: str | None = None) -> list[ScrapeOutcome]:
+def run_detailed(urls: list[str], fmt: str | None = None,
+                 extras: Extras | None = None) -> list[ScrapeOutcome]:
     """Scrape each URL; return a full ScrapeOutcome (success or failure with the
     per-tier cascade and a classified reason) for every URL.
 
-    fmt overrides SCRAPER_OUTPUT_FORMAT for this call (None = use the default)."""
+    fmt overrides SCRAPER_OUTPUT_FORMAT for this call (None = use the default).
+    extras opts into state / appendix / highlights on successful results."""
     db = botwall.load_db()
     out = []
     try:
         with output_format_scope(fmt):
             for url in urls:
-                out.append(_run_one(url, db))
+                res = _run_one(url, db, extras)
+                if res.ok and extras and extras.query:
+                    _add_highlights(res, extras.query)
+                out.append(res)
     finally:
         botwall.save_db(db)
         flush()
     return out
 
 
-def run(urls: list[str], fmt: str | None = None) -> list[ScrapeResult]:
+def run(urls: list[str], fmt: str | None = None,
+        extras: Extras | None = None) -> list[ScrapeResult]:
     """Successes only (backward-compatible). Use run_detailed() for failures."""
-    return [ScrapeResult(o.url, o.markdown, o.source_method, o.format)
-            for o in run_detailed(urls, fmt) if o.ok]
+    return [ScrapeResult(o.url, o.markdown, o.source_method, o.format,
+                         o.state, o.appendix, o.highlights)
+            for o in run_detailed(urls, fmt, extras) if o.ok]
