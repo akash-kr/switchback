@@ -37,7 +37,7 @@ _TIMEOUT_S = float(os.getenv("SCRAPER_TIER_2_TIMEOUT_S", "15"))
 
 # Recent Chrome JA3 targets available in curl_cffi 0.15.x. A small spread of real
 # versions mirrors how live traffic is distributed across Chrome releases.
-_IMPERSONATE_TARGETS = ("chrome131", "chrome136", "chrome142")
+_IMPERSONATE_TARGETS = ("chrome142", "chrome145", "chrome146")
 
 
 def _impersonate_for(url: str) -> str:

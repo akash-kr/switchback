@@ -78,3 +78,20 @@ def test_dominant_failure_ranks_unavailable_top():
     A = orch.TierAttempt
     attempts = [A("t1", "botwall"), A("t2", "unavailable"), A("t3", "error")]
     assert orch._dominant_failure(attempts)[0] == "unavailable"
+
+
+@pytest.mark.parametrize("modules, expected", [
+    ({"camoufox.geolocation": True}, True),                # camoufox 0.5+: maxminddb present
+    ({"camoufox.geolocation": False}, False),              # 0.5+ without the geoip extra
+    ({"camoufox.locale": True}, True),                     # camoufox 0.4: geoip2 present
+    ({}, False),                                           # camoufox not installed
+])
+def test_camoufox_geoip_probe_follows_camoufox_own_flag(monkeypatch, modules, expected):
+    from switchback.tiers import tier_5
+
+    def fake_import(name):
+        if name not in modules:
+            raise ImportError(name)
+        return types.SimpleNamespace(ALLOW_GEOIP=modules[name])
+    monkeypatch.setattr(tier_5.importlib, "import_module", fake_import)
+    assert tier_5._geoip_available() is expected

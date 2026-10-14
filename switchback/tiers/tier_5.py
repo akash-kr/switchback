@@ -13,6 +13,7 @@ before the paid Firecrawl tier.
 """
 from __future__ import annotations
 
+import importlib
 import logging
 import os
 
@@ -43,14 +44,15 @@ def disabled() -> bool:
 
 
 def _geoip_available() -> bool:
-    """camoufox's geoip matching needs the `geoip2` package (the camoufox[geoip]
-    extra). Without it, requesting geoip raises and kills the whole tier — so we
-    probe and degrade gracefully instead."""
-    try:
-        import geoip2  # noqa: F401
-        return True
-    except Exception:
-        return False
+    """camoufox's geoip matching needs its camoufox[geoip] extra (`geoip2` before
+    0.5, `maxminddb` from 0.5). Without it, requesting geoip raises and kills the
+    whole tier — so we ask camoufox itself and degrade gracefully instead."""
+    for module in ("camoufox.geolocation", "camoufox.locale"):  # 0.5+, then 0.4
+        try:
+            return bool(importlib.import_module(module).ALLOW_GEOIP)
+        except (ImportError, AttributeError):
+            continue
+    return False
 
 
 def _launch_opts() -> dict:

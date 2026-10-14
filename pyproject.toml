@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "switchback"
-version = "0.6.0"
+version = "0.6.1"
 description = "One cost-ordered scrape cascade (HTTP → stealth browser → paid), shared by every tool."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -37,9 +37,9 @@ classifiers = [
 dependencies = [
     "markdownify",
     "beautifulsoup4",
-    "pypdf",
-    "requests",
-    "curl_cffi",      # tier1: TLS-impersonating HTTP
+    "pypdf>=6.19",    # older releases hang or blow up memory on crafted PDFs (DoS CVEs)
+    "requests>=2.33", # CVE-2024-35195, CVE-2024-47081, CVE-2026-25645
+    "curl_cffi>=0.15",  # tier_2: TLS-impersonating HTTP (chrome145/146 targets)
 ]
 
 [project.optional-dependencies]

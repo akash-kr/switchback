@@ -4,6 +4,22 @@ All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses semantic-ish
 versioning while pre-1.0.
 
+## [0.6.1] - 2026-10-14
+
+### Fixed
+- **camoufox geoip on fresh installs.** camoufox 0.5 swapped `geoip2` for
+  `maxminddb` in its `[geoip]` extra, so tier_5 decided geoip was missing and ran
+  proxied sessions without matching locale/timezone. It now asks camoufox's own
+  flag, which works on 0.4 and 0.5.
+
+### Changed
+- **Newer Chrome TLS fingerprints in tier_2** (`chrome142`, `chrome145`,
+  `chrome146` instead of `chrome131`, `chrome136`, `chrome142`); two-year-old
+  Chrome versions are a fingerprint tell. Needs `curl_cffi>=0.15`, now the floor.
+- **Security floors:** `pypdf>=6.19` (older releases have DoS CVEs on crafted
+  PDFs, which this library parses from the web) and `requests>=2.33`
+  (CVE-2024-35195, CVE-2024-47081, CVE-2026-25645).
+
 ## [0.6.0] - 2026-10-14
 
 ### Added
