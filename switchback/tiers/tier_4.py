@@ -80,7 +80,7 @@ def fetch(url: str, timeout_ms: int = int(_TIMEOUT_S * 1000)) -> str:
             page = ctx.new_page()
             responses: list = []
             page.on("response", lambda resp: responses.append(resp))
-            page.goto(url, timeout=timeout_ms, wait_until="domcontentloaded")
+            _browser.raise_if_missing(page.goto(url, timeout=timeout_ms, wait_until="domcontentloaded"))
             html = page.content()
             if len(html) < 5000:
                 try:

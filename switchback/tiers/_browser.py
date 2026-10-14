@@ -34,6 +34,14 @@ def looks_blocked(html: str, url: str) -> bool:
     return _looks_like_botwall(html_to_markdown(html, base_url=url))
 
 
+def raise_if_missing(response) -> None:
+    """Fail the tier on a 404/410 document, as tier_2 does; a browser otherwise
+    renders the site's "Page not found" page and returns it as the article."""
+    status = getattr(response, "status", None)
+    if status in (404, 410):
+        raise RuntimeError(f"HTTP Error {status}: page not found")
+
+
 def response_bytes(responses) -> int:
     """Total wire bytes a render pulled across every resource — the residential-cost
     basis. Reads only the Content-Length header: it's non-blocking. (We deliberately

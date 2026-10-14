@@ -4,6 +4,15 @@ All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses semantic-ish
 versioning while pre-1.0.
 
+## [0.6.3] - 2026-10-14
+
+### Fixed
+- **"Page not found" pages returned as articles by the browser tiers.** tier_4
+  and tier_5 ignored the HTTP status of the page they loaded, so a site answering
+  404 (seen on bhaskarenglish.in, which serves its 404 page to some bot traffic)
+  had its "404 - Page not found" page returned as a success. A 404 or 410 now
+  fails the tier, as it already did in tier_2, and the cascade moves on.
+
 ## [0.6.2] - 2026-10-14
 
 ### Fixed

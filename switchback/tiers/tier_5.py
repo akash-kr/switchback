@@ -86,7 +86,7 @@ def fetch(url: str) -> str:
             auth = session_cache.browser_cookies(url)
             if auth:
                 page.context.add_cookies(auth)
-            page.goto(url, wait_until="networkidle", timeout=_TIMEOUT_MS)
+            _browser.raise_if_missing(page.goto(url, wait_until="networkidle", timeout=_TIMEOUT_MS))
             html = page.content()
             # JS bot-manager sensor interstitial → settle + reload once.
             if _browser.looks_blocked(html, url):

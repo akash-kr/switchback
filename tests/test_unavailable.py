@@ -116,3 +116,17 @@ def test_arxiv_user_agent_carries_a_contact_only_when_configured(monkeypatch, co
     with pytest.raises(requests.ConnectionError):
         tier_1._arxiv("2303.08774", "https://arxiv.org/abs/2303.08774")
     assert sent["User-Agent"] == expected
+
+
+@pytest.mark.parametrize("status, fails", [(404, True), (410, True), (200, False), (403, False), (None, False)])
+def test_browser_tiers_fail_on_a_missing_page(status, fails):
+    from switchback.policy.gates import classify_error
+    from switchback.tiers import _browser
+
+    response = None if status is None else types.SimpleNamespace(status=status)
+    if not fails:
+        _browser.raise_if_missing(response)  # challenges (403) still get their reload
+        return
+    with pytest.raises(RuntimeError) as caught:
+        _browser.raise_if_missing(response)
+    assert classify_error(caught.value) == ("http_error", status)
