@@ -4,7 +4,7 @@ All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses semantic-ish
 versioning while pre-1.0.
 
-## [Unreleased]
+## [0.6.2] - 2026-10-14
 
 ### Fixed
 - **Block pages hidden behind inline images were returned as successes.** A
