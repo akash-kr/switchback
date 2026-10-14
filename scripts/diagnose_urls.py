@@ -105,10 +105,10 @@ def reason_for(o) -> str:
 
 
 def firecrawl_attempt(o):
-    """Return the Tier-4 attempt's outcome if the cascade actually reached
+    """Return the tier_7 (Firecrawl) attempt's outcome if the cascade actually reached
     Firecrawl (not gated/skipped), else None."""
     for a in o.attempts:
-        if a.tier == "tier4_firecrawl" and a.outcome not in ("disabled", "not_applicable"):
+        if a.tier == "tier_7" and a.outcome not in ("disabled", "not_applicable"):
             return a.outcome
     return None
 
@@ -164,7 +164,7 @@ def main() -> int:
         reason = reason_for(o)
         fc_outcome = firecrawl_attempt(o)
         reached_fc = fc_outcome is not None
-        won_fc = o.ok and o.source_method == "tier4_firecrawl"
+        won_fc = o.ok and o.source_method == "tier_7"
         # When firecrawl is off, an exhausted cascade is exactly what would have
         # been handed to firecrawl in production — label it so the routing is visible.
         terminal = o.final_outcome in ("all_failed", "deadline_exceeded")
