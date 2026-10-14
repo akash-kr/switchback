@@ -25,3 +25,4 @@ feature_impact.json
 
 # macOS
 .DS_Store
+storage/
