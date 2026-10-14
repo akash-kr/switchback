@@ -333,6 +333,7 @@ export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
 - `SCRAPER_PROXY` — route *all* tiers/URLs through a proxy
 - `SCRAPER_EGRESS_PROXY` — route only walled hosts through a proxy (see [Cost-scoped residential egress](#cost-scoped-residential-egress))
 - `SEARXNG_URL` — defaults to `http://localhost:8888`
+- `SCRAPER_ARXIV_CONTACT` — optional email added to the User-Agent of arXiv API calls (arXiv asks clients to identify themselves; the default names only the project URL)
 - `SCRAPER_STATE_DIR` — where the botwall DB/event log + session cache live
 - `SCRAPER_COOKIES_FILE` — Netscape `cookies.txt` to scrape login-gated hosts (injected into the HTTP and browser tiers)
 - `SCRAPER_CAPTCHA_PROVIDER` + `SCRAPER_CAPTCHA_API_KEY` — opt-in, off by default: wire a third-party solver (2captcha/capsolver/capmonster/anticaptcha/deathbycaptcha/9kw) into tier_3 for Turnstile/reCAPTCHA/hCaptcha on CF hosts. **Paid**, billed per solve by the provider.

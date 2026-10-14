@@ -19,6 +19,9 @@ versioning while pre-1.0.
 - **Security floors:** `pypdf>=6.19` (older releases have DoS CVEs on crafted
   PDFs, which this library parses from the web) and `requests>=2.33`
   (CVE-2024-35195, CVE-2024-47081, CVE-2026-25645).
+- **arXiv calls no longer send the maintainer's email.** tier_1's arXiv
+  User-Agent named a fixed contact address on every install; it now names the
+  project URL, and `SCRAPER_ARXIV_CONTACT` adds your own address if you want one.
 
 ## [0.6.0] - 2026-10-14
 

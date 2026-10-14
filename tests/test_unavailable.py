@@ -95,3 +95,24 @@ def test_camoufox_geoip_probe_follows_camoufox_own_flag(monkeypatch, modules, ex
         return types.SimpleNamespace(ALLOW_GEOIP=modules[name])
     monkeypatch.setattr(tier_5.importlib, "import_module", fake_import)
     assert tier_5._geoip_available() is expected
+
+
+@pytest.mark.parametrize("contact, expected", [
+    ("", "switchback/1.0 (+https://github.com/akash-kr/switchback)"),
+    ("ops@example.com", "switchback/1.0 (+https://github.com/akash-kr/switchback; mailto:ops@example.com)"),
+])
+def test_arxiv_user_agent_carries_a_contact_only_when_configured(monkeypatch, contact, expected):
+    import requests
+
+    from switchback.tiers import tier_1
+
+    sent = {}
+
+    def fake_get(url, timeout, headers):
+        sent.update(headers)
+        raise requests.ConnectionError("offline")
+    monkeypatch.setenv("SCRAPER_ARXIV_CONTACT", contact)
+    monkeypatch.setattr(requests, "get", fake_get)
+    with pytest.raises(requests.ConnectionError):
+        tier_1._arxiv("2303.08774", "https://arxiv.org/abs/2303.08774")
+    assert sent["User-Agent"] == expected

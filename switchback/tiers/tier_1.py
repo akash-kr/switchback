@@ -64,9 +64,11 @@ def _arxiv(arxiv_id: str, url: str) -> str:
     # arxiv wants plain requests + an identifying UA (their published guidance);
     # impersonating Chrome triggers aggressive 429s from their Akamai front-end.
     import requests
+    # The contact is the operator's to give, so it's opt-in; the project URL identifies the client.
+    contact = os.getenv("SCRAPER_ARXIV_CONTACT", "").strip()
+    ua = f"switchback/1.0 (+https://github.com/akash-kr/switchback{'; mailto:' + contact if contact else ''})"
     r = requests.get(f"https://export.arxiv.org/api/query?id_list={arxiv_id}",
-                     timeout=_TIMEOUT_S,
-                     headers={"User-Agent": "switchback/1.0 (mailto:akash@theaklabs.com)"})
+                     timeout=_TIMEOUT_S, headers={"User-Agent": ua})
     r.raise_for_status()
     ns = {"atom": "http://www.w3.org/2005/Atom"}
     entry = ET.fromstring(r.text).find("atom:entry", ns)
