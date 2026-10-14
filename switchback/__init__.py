@@ -5,8 +5,10 @@ Public API:
     results = scrape(["https://example.com/article"])
     hits = search("web scraping")            # query → URLs (SearXNG)
 """
-from .api import scrape, scrape_detailed, ScrapeOutcome, ScrapeResult, TierAttempt
+from .api import (scrape, scrape_detailed, ScrapeOutcome, ScrapeResult, TierAttempt,
+                  ScrapeOutcomeWithExtras, ScrapeResultWithExtras)
 from .search import search, SearchResult
 
 __all__ = ["scrape", "scrape_detailed", "ScrapeOutcome", "ScrapeResult",
-           "TierAttempt", "search", "SearchResult"]
+           "TierAttempt", "search", "SearchResult",
+           "ScrapeOutcomeWithExtras", "ScrapeResultWithExtras"]

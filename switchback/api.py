@@ -11,29 +11,62 @@ from __future__ import annotations
 import sys
 
 from .normalize import output_key
-from .orchestrator import ScrapeOutcome, ScrapeResult, TierAttempt, run, run_detailed
+from .orchestrator import (Extras, ScrapeOutcome, ScrapeOutcomeWithExtras, ScrapeResult,
+                           ScrapeResultWithExtras, TierAttempt, run, run_detailed)
 from .search import search  # re-export: query → URLs (SearXNG)
 
 
-def scrape(urls: str | list[str], fmt: str | None = None) -> list[ScrapeResult]:
+def _extras(state: bool, appendix: bool, query: str | None) -> Extras | None:
+    """None when nothing extra was asked for, so the default path is untouched."""
+    if state or appendix or (query and query.strip()):
+        return Extras(state=bool(state), appendix=bool(appendix),
+                      query=query.strip() if query and query.strip() else None)
+    return None
+
+
+def scrape(urls: str | list[str], fmt: str | None = None, *, state: bool = False,
+           appendix: bool = False, query: str | None = None) -> list[ScrapeResult]:
     """Scrape one or many URLs through the cascade. Returns successes only.
 
     fmt selects the output format (markdown | markdown_trimmed | html |
     html_selectors); None uses the SCRAPER_OUTPUT_FORMAT default (markdown).
     For failures with classified reasons + the per-tier cascade, use
-    scrape_detailed()."""
+    scrape_detailed().
+
+    Opt-in extras. Without any, results are plain ScrapeResults, unchanged. With
+    one, results are ScrapeResultWithExtras (a ScrapeResult subclass) whose
+    matching field is filled; the others stay None:
+      state=True     embedded page JSON (__NEXT_DATA__, JSON-LD, window.__X__ …)
+      appendix=True  the nav/header/footer/aside stripped from the main content
+      query="…"      highlights: the passages that answer it, with citation links"""
     if isinstance(urls, str):
         urls = [urls]
-    return run(urls, fmt)
+    return run(urls, fmt, _extras(state, appendix, query))
 
 
-def scrape_detailed(urls: str | list[str], fmt: str | None = None) -> list[ScrapeOutcome]:
+def scrape_detailed(urls: str | list[str], fmt: str | None = None, *,
+                    state: bool = False, appendix: bool = False,
+                    query: str | None = None) -> list[ScrapeOutcome]:
     """Like scrape() but returns a ScrapeOutcome per URL — successes *and*
     failures, each with final_outcome, error_class, status_code, and the
-    per-tier attempts that were made. fmt as in scrape()."""
+    per-tier attempts that were made. fmt and the extras as in scrape()."""
     if isinstance(urls, str):
         urls = [urls]
-    return run_detailed(urls, fmt)
+    return run_detailed(urls, fmt, _extras(state, appendix, query))
+
+
+def result_dict(r: ScrapeResult | ScrapeOutcome, state: bool = False, appendix: bool = False,
+                query: str | None = None) -> dict:
+    """The JSON shape the CLI, HTTP service and MCP server return for a result.
+    Extra keys appear only when that extra was requested."""
+    d = {"url": r.url, "source_method": r.source_method, output_key(r.format): r.markdown}
+    if state:
+        d["state"] = r.state
+    if appendix:
+        d["appendix"] = r.appendix
+    if query and query.strip():
+        d["highlights"] = r.highlights
+    return d
 
 
 def _main() -> int:
@@ -53,11 +86,14 @@ def _main() -> int:
                 _k = _k.strip()
                 if _k and _k not in _os.environ:
                     _os.environ[_k] = _v.strip()
-    usage = ("usage: switchback [--format FMT] <url> [<url> ...]\n"
+    usage = ("usage: switchback [--format FMT] [--state] [--appendix] [--query Q] <url> [<url> ...]\n"
              "       switchback --search <query ...>\n"
              "       switchback --doctor\n"
              "       (or: python -m switchback <url> ...)\n"
-             "  FMT: markdown (default) | markdown_trimmed | html | html_selectors")
+             "  FMT: markdown (default) | markdown_trimmed | html | html_selectors\n"
+             "  --state     add the page's embedded JSON (Next.js, JSON-LD, ...)\n"
+             "  --appendix  add the nav/header/footer/aside as separate markdown\n"
+             "  --query Q   add highlights: passages that answer Q, with citation links")
     # --help/-h is an explicit request: usage to stdout, exit 0 (don't treat it
     # as a URL to scrape). Check before any work so it stays fast and side-effect-free.
     if any(a in ("--help", "-h") for a in sys.argv[1:]):
@@ -78,8 +114,11 @@ def _main() -> int:
             [{"title": h.title, "url": h.url, "snippet": h.snippet} for h in hits],
             indent=2))
         return 0 if hits else 1
-    # Optional --format / --format=FMT flag; everything else is a URL.
+    # Optional --format / --format=FMT, --state, --appendix, --query / --query=Q
+    # flags; everything else is a URL.
     fmt: str | None = None
+    state = appendix = False
+    query: str | None = None
     rest: list[str] = []
     argv = sys.argv[1:]
     i = 0
@@ -89,16 +128,21 @@ def _main() -> int:
             fmt = argv[i + 1]; i += 2; continue
         if a.startswith("--format="):
             fmt = a.split("=", 1)[1]; i += 1; continue
+        if a == "--state":
+            state = True; i += 1; continue
+        if a == "--appendix":
+            appendix = True; i += 1; continue
+        if a == "--query" and i + 1 < len(argv):
+            query = argv[i + 1]; i += 2; continue
+        if a.startswith("--query="):
+            query = a.split("=", 1)[1]; i += 1; continue
         rest.append(a); i += 1
     if not rest:
         print(usage, file=sys.stderr)
         return 2
-    results = scrape(rest, fmt=fmt)
-    print(json.dumps(
-        [{"url": r.url, "source_method": r.source_method,
-          output_key(r.format): r.markdown}
-         for r in results],
-        indent=2))
+    results = scrape(rest, fmt=fmt, state=state, appendix=appendix, query=query)
+    print(json.dumps([result_dict(r, state, appendix, query) for r in results],
+                     indent=2))
     return 0 if results else 1
 
 

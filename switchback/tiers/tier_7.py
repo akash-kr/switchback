@@ -9,7 +9,7 @@ from __future__ import annotations
 import os
 import threading
 
-from ..normalize import active_format, render
+from ..normalize import active_format, capture_into, current_capture, render
 from ..policy.gates import check
 
 NAME = "tier_7"
@@ -48,10 +48,12 @@ def fetch(url: str) -> str:
     # active_format() is thread-local, so read it here (main thread) and pass it in.
     box: dict = {}
     fmt = active_format()
+    capture = current_capture()  # thread-local too; re-applied in the worker
 
     def work():
         try:
-            box["md"] = _scrape(url, fmt)
+            with capture_into(capture):
+                box["md"] = _scrape(url, fmt)
         except BaseException as e:  # noqa: BLE001 — re-raised to the caller below
             box["err"] = e
 

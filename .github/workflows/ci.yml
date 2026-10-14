@@ -35,6 +35,14 @@ jobs:
           python -c "from switchback import scrape, scrape_detailed, search; print('import OK')"
           python -m switchback --help || true
 
+      # Offline tests (fake tiers, no network). Includes the backward-compatibility
+      # tests that pin the result fields and CLI/HTTP JSON keys; fastapi + httpx
+      # let the HTTP shape test run too.
+      - name: Offline tests
+        run: |
+          pip install pytest fastapi httpx
+          pytest -q tests
+
       - name: Build distribution
         run: |
           pip install build

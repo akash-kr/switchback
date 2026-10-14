@@ -17,6 +17,34 @@ versioning while pre-1.0.
   request and WebSocket a page makes to a loopback, private, link-local (incl.
   cloud metadata) or CGNAT address is refused, and service workers are blocked so
   they can't bypass it. Unset = unchanged (no routing is installed at all).
+- **Agent-ready extras, all opt-in** (`scrape(..., state=, appendix=, query=)`,
+  the same flags on `scrape_detailed`, `--state` / `--appendix` / `--query` on the
+  CLI, and `state` / `appendix` / `query` in the HTTP `/scrape` body). Without them
+  results, CLI JSON and HTTP JSON are unchanged: `ScrapeResult` and `ScrapeOutcome`
+  keep exactly their fields. With them, results are the new subclasses
+  `ScrapeResultWithExtras` / `ScrapeOutcomeWithExtras`.
+  - `state` — the page's embedded JSON (Next.js `__NEXT_DATA__`, Nuxt,
+    `window.__X__` globals, JSON-LD).
+  - `appendix` — nav/header/footer/aside as separate markdown regions.
+  - `query` → `highlights` — the passages that answer the question, each with a
+    text-fragment citation link. Graded by local BM25 by default, or by TypeSafe's
+    Jev model with `SCRAPER_HIGHLIGHTS_GRADER=jev` + `TYPESAFE_API_KEY` (falls back
+    to BM25 on any Jev error).
+- **MCP server** — `switchback-mcp` (stdio) exposes `scrape` and `search` as tools.
+  Install with `switchback[mcp]`.
+- **YouTube transcripts** in tier_1 (title, channel, timestamped transcript linked
+  to the moment in the video). Opt in with `SCRAPER_YOUTUBE=1` plus
+  `switchback[youtube]`; otherwise, or for videos with no captions, YouTube URLs
+  go through the cascade as before.
+  YouTube blocks most cloud IPs; a blocked request is retried once through
+  `SCRAPER_EGRESS_PROXY` when one is configured. Transcript highlights cite the
+  timestamp in the video.
+- **Office and ebook files** (.docx, .pptx, .xlsx, .xls, .epub) converted to
+  markdown in tier_2 via markitdown. Opt in with `SCRAPER_DOCUMENTS=1` plus
+  `switchback[documents]`; otherwise these URLs are handled exactly as before.
+
+The new extras are deliberately not added to `[all]`, so upgrading an existing
+`[all]` install pulls no new dependencies.
 
 ## [0.5.0] - 2026-06-30
 

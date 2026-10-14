@@ -74,8 +74,8 @@ same host, and botwall starts at the tier that won last time. The paid tier is n
 
 | Tier | Strategy | Cost |
 |---|---|---|
-| tier_1 | Direct APIs / mirrors (arxiv, wikipedia, EuropePMC; extend: job boards) | free, cleanest |
-| tier_2 | Plain HTTP + TLS impersonation (`curl_cffi`), incl. PDFs | cheap |
+| tier_1 | Direct APIs / mirrors (arxiv, wikipedia, EuropePMC, YouTube transcripts; extend: job boards) | free, cleanest |
+| tier_2 | Plain HTTP + TLS impersonation (`curl_cffi`), incl. PDFs and office/ebook files | cheap |
 | tier_3 | Cloudflare / anti-bot solver (`cloudscraper`, install `.[cloudflare]`) — on by default (opt out: `SCRAPER_DISABLE_CLOUDSCRAPER`) | cheap-ish (~5s/host) |
 | tier_4 | Stealth headless browser (`patchright`, Chromium) | heavy |
 | tier_5 | Camoufox (Firefox stealth) — **on by default** (opt out: `SCRAPER_DISABLE_CAMOUFOX`) | heavy + slow (~40s on hard CF) |
@@ -102,8 +102,17 @@ pip install "switchback[browser]" && patchright install chromium   # + tier_4 st
 pip install "switchback[camoufox]" && camoufox fetch               # + tier_5 Firefox stealth
 pip install "switchback[firecrawl]"    # + tier_7 paid API (needs FIRECRAWL_API_KEY)
 pip install "switchback[tracing]"      # + OpenTelemetry -> any OTLP backend
-pip install "switchback[all]"          # everything
+pip install "switchback[all]"          # all of the above
+pip install "switchback[mcp]"          # + MCP server for agents (switchback-mcp)
+pip install "switchback[youtube]"      # + YouTube transcripts in tier_1 (and set SCRAPER_YOUTUBE=1)
+pip install "switchback[documents]"    # + .docx/.pptx/.xlsx/.xls/.epub → markdown in tier_2 (and set SCRAPER_DOCUMENTS=1)
 ```
+
+`mcp`, `youtube` and `documents` are not part of `[all]`, so upgrading an existing
+`[all]` install doesn't pull new dependencies (`documents` brings markitdown and
+onnxruntime). Add them by name. YouTube transcripts and office files also need
+their switch (`SCRAPER_YOUTUBE=1`, `SCRAPER_DOCUMENTS=1`), because they change what
+those URLs return; without it they behave exactly as before, installed or not.
 
 For tier_3's **full** v3 JS-VM + Turnstile + stealth, install the Enhanced Edition
 3.x fork (PyPI's `cloudscraper` is the older v1/v2 — PyPI forbids pinning a
@@ -204,6 +213,61 @@ Non-Python callers: see [clients/node_bridge.md](clients/node_bridge.md). Python
 callers that want HTTP-with-CLI-fallback can drop in
 [clients/python_client.py](clients/python_client.py).
 
+**MCP server** (for agents: Claude Code, Cursor, any MCP client)
+```bash
+pip install "switchback[mcp]"
+claude mcp add switchback -- switchback-mcp           # stdio; tools: scrape, search
+```
+
+## Agent-ready extras
+
+Off by default: without them every result is exactly what it was before, the same
+`ScrapeResult` / `ScrapeOutcome` with the same fields, and the same CLI and HTTP
+JSON. Ask for any combination per call; results then come back as
+`ScrapeResultWithExtras` / `ScrapeOutcomeWithExtras` (subclasses, so existing
+`isinstance` checks still hold) with the extras you asked for filled in and the
+rest `None`. The CLI and HTTP JSON add only the keys you asked for.
+
+```python
+from switchback import scrape
+[r] = scrape("https://example.com/product", state=True, appendix=True,
+             query="what does it cost?")
+r.state       # {"__NEXT_DATA__": {...}, "json_ld": [...], "__INITIAL_STATE__": {...}}
+r.appendix    # [{"region": "nav", "markdown": "..."}, {"region": "footer", ...}]
+r.highlights  # [{"text": "...", "score": 7.1, "grader": "bm25",
+              #   "link": "https://example.com/product#:~:text=Price%20from,per%20month"}]
+```
+
+```bash
+switchback --state --appendix --query "what does it cost?" https://example.com/product
+curl -s localhost:8799/scrape -d '{"urls":["https://example.com"],"query":"pricing","state":true}'
+```
+
+| extra | what you get |
+| --- | --- |
+| `state` | The JSON the page embeds for its own frontend: Next.js `__NEXT_DATA__`, Nuxt, `window.__X__` globals (incl. `JSON.parse("…")`), schema.org JSON-LD. Often cleaner than the text (prices, ids, dates). Only valid JSON is returned. `{}` when the winning tier had no HTML (API mirrors, PDFs, docs, Firecrawl markdown). |
+| `appendix` | The menus, header, footer and sidebars that are stripped from the main content, as separate markdown, one entry per region. |
+| `query` → `highlights` | The passages that answer the question, best first, each with a citation `link`: a [text fragment](https://developer.mozilla.org/en-US/docs/Web/URI/Reference/Fragment/Text_fragments) URL that opens the page scrolled to, and highlighting, that passage (for a YouTube transcript, the video at that moment). If the text isn't visible on the page (e.g. it came from the `<title>` or image alt text) the browser simply opens the page at the top. |
+
+`state` and `appendix` need the fetched HTML, so they skip the content cache
+(`SCRAPER_CONTENT_TTL_S`) and fetch; `highlights` work on cached content too.
+
+**Grading highlights.** The default grader is local BM25 keyword scoring: free,
+offline, no data leaves the box. For better relevance, opt into
+[TypeSafe](https://typesafe.ai)'s Jev model, which answers "does this passage
+answer the question?" for every passage and returns a calibrated probability
+(passages under `SCRAPER_HIGHLIGHTS_MIN_SCORE`, default 0.5, are dropped, so an
+off-topic page honestly returns `[]`):
+
+```bash
+export SCRAPER_HIGHLIGHTS_GRADER=jev
+export TYPESAFE_API_KEY=...        # sends the page passages + query to api.typesafe.ai
+```
+
+Jev is billed per input token (about $0.0004 for a 10k-token page). If the call
+fails, that request falls back to BM25 (`"grader": "bm25"`); the scrape never fails
+because of highlights.
+
 ## Cost-scoped residential egress
 
 The dominant reason hard hosts wall you is the **datacenter IP**, not the
@@ -292,6 +356,13 @@ export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
 - `SCRAPER_TIER_RETRY_ON` — failure classes eligible for a same-tier retry (default `timeout,rate_limited,connection`; widen to include `botwall,http_block` behind a rotating residential proxy so each retry gets a fresh IP). Retries are bounded by `SCRAPER_DEADLINE_S`; enabling them on the paid Firecrawl tier bills per attempt
 - `SCRAPER_LOGIN_HOOK` — `pkg.module:func` returning `{cookie: value}` for a host (see [Logged-in sessions](#logged-in-sessions))
 - `SCRAPER_EXTRACTION_FILE` — per-domain extraction prefs JSON (default `config/extraction.json`)
+- `SCRAPER_HIGHLIGHTS_GRADER` — `bm25` (default) or `jev` (needs `TYPESAFE_API_KEY`; see [Agent-ready extras](#agent-ready-extras))
+- `SCRAPER_HIGHLIGHTS_TOP_K` — highlights returned per URL (5)
+- `SCRAPER_HIGHLIGHTS_MIN_SCORE` — Jev probability below which a passage is dropped (0.5)
+- `SCRAPER_JEV_MODEL` / `SCRAPER_JEV_TIMEOUT_S` — Jev model alias (`jev-latest`) and per-request timeout (20s)
+- `SCRAPER_YOUTUBE` — opt-in: `1` returns YouTube transcripts from tier_1 (needs `switchback[youtube]`)
+- `SCRAPER_DOCUMENTS` — opt-in: `1` converts .docx/.pptx/.xlsx/.xls/.epub to markdown in tier_2 (needs `switchback[documents]`)
+- `SCRAPER_YOUTUBE_LANGS` — transcript languages to try, in order (`en`; e.g. `en,hi`). YouTube blocks most cloud IPs; when it does, the transcript is retried once through `SCRAPER_EGRESS_PROXY` if set
 - `SCRAPER_TRACE_SESSION` — opt-in: capture a Playwright trace (screenshots + DOM + network) per browser-tier attempt, written to `state/traces/`
 - `BENCH_FIRECRAWL_USD` / `BENCH_FIRECRAWL_HARD_MULT` — cost model for the savings report
 </details>
@@ -342,6 +413,20 @@ Markdown of the whole page is the default. To scope a site to its content node o
 strip site-specific noise, declare prefs per host in `config/extraction.json`
 (see [config/extraction.example.json](config/extraction.example.json)); every
 tier's normalize step picks them up automatically.
+
+## Roadmap
+
+Not built yet:
+
+- **Layout-aware markdown** — keep pricing grids and card layouts built from
+  `<div>`s (not `<table>`s) as tables, using the browser tiers' rendered layout.
+- **Scanned pages and images** — OCR / vision-model text for PDFs with no text
+  layer and for images.
+- **Audio and caption-less video** — speech-to-text transcription.
+- **Hosted service** — managed browsers at high concurrency, stored results and
+  shareable result links. switchback stays a library you run yourself.
+- Smaller gaps: Next.js App Router flight data (`self.__next_f`) in `state`, and
+  YouTube chapters in transcripts.
 
 ## Contributing
 
