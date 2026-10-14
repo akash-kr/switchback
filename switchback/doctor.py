@@ -29,6 +29,8 @@ def _camoufox() -> tuple[bool, str]:
 def probe() -> list[tuple[str, bool, str]]:
     """(label, ok, detail) for each tier/dependency that matters at runtime."""
     cs_ok, cs_detail = tier_3.available()
+    if tier_3.disabled():
+        cs_ok, cs_detail = False, "off (SCRAPER_DISABLE_CLOUDSCRAPER set)"
     br_ok, br_detail = tier_4.available()
     node = shutil.which("node")
     return [
@@ -49,7 +51,8 @@ def report() -> int:
     for label, ok, detail in rows:
         mark = "OK  " if ok else "MISS"
         print(f"  [{mark}] {label:30} {detail}")
-    cs_ok = rows[0][1]
+    # Turned off on purpose isn't a readiness failure.
+    cs_ok = rows[0][1] or tier_3.disabled()
     br_ok = rows[1][1]
     if cs_ok and br_ok:
         print("\nCapable tiers ready.")

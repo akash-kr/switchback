@@ -75,7 +75,8 @@ def _launch_opts() -> dict:
 def fetch(url: str) -> str:
     from camoufox.sync_api import Camoufox
     with browser_slot(NAME), Camoufox(**_launch_opts()) as browser:
-        page = browser.new_page()
+        page = browser.new_page(**_browser.context_options())
+        _browser.block_private_networks(page.context)
         responses: list = []
         page.on("response", lambda resp: responses.append(resp))
         try:

@@ -6,6 +6,18 @@ versioning while pre-1.0.
 
 ## [Unreleased]
 
+### Added
+- **`SCRAPER_DISABLE_CLOUDSCRAPER`** — opt-out for tier_3. Solving a JS challenge
+  runs site-supplied JavaScript in js2py or Node's `vm`, neither of which is a
+  security boundary; deployments that scrape URLs from untrusted users should turn
+  it off and let the browser tiers clear Cloudflare. Unset = unchanged. A host whose
+  learned winner was tier_3 falls through to the next tier rather than stalling,
+  and `--doctor` shows tier_3 as `off` without failing the healthcheck.
+- **`SCRAPER_BROWSER_BLOCK_PRIVATE`** — opt-in guard for tiers 4 and 5: every
+  request and WebSocket a page makes to a loopback, private, link-local (incl.
+  cloud metadata) or CGNAT address is refused, and service workers are blocked so
+  they can't bypass it. Unset = unchanged (no routing is installed at all).
+
 ## [0.5.0] - 2026-06-30
 
 ### Changed

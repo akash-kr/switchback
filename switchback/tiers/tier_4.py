@@ -71,7 +71,8 @@ def fetch(url: str, timeout_ms: int = int(_TIMEOUT_S * 1000)) -> str:
             # No user_agent override: patchright ships a real, internally
             # consistent Chromium fingerprint; overriding the UA desyncs it from
             # the engine version / client hints and defeats the stealth fork.
-            ctx = browser.new_context()
+            ctx = browser.new_context(**_browser.context_options())
+            _browser.block_private_networks(ctx)
             session_trace.start(ctx, url)
             auth = session_cache.browser_cookies(url)
             if auth:
