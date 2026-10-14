@@ -4,7 +4,7 @@ All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses semantic-ish
 versioning while pre-1.0.
 
-## [Unreleased]
+## [0.6.0] - 2026-10-14
 
 ### Added
 - **`SCRAPER_DISABLE_CLOUDSCRAPER`** — opt-out for tier_3. Solving a JS challenge
