@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from switchback.policy.gates import ShortContent, check
+from switchback.policy.gates import BotWall, ShortContent, check
 
 URL = "https://news.example/article"
 
@@ -66,3 +66,68 @@ def test_real_long_article_passes():
 def test_length_floor_still_applies():
     with pytest.raises(ShortContent):
         check(URL, "too short to be anything")
+
+
+# --- Inline data-URI images must not hide a block page or pad the length floor.
+# Regression: Indeed's Cloudflare block page renders two base64 SVG logos
+# (~7.2k chars) *before* "You have been blocked". The 600-char head scan never
+# saw the phrase and the logos cleared the 2000-char floor, so the block page was
+# returned as a tier_4 "OK" success. Shape mirrors the real page (logo sizes
+# 6644 / 540 chars); IP and Ray ID are placeholders.
+def _data_uri(n: int) -> str:
+    return "data:image/svg+xml;base64," + ("PHN2Zy" * n)[: n - 26]
+
+
+INDEED_BLOCK = (
+    "Blocked - Indeed.com\n"
+    f"![]({_data_uri(6644)})\n"
+    f"![]({_data_uri(540)})\n\n"
+    "# Request Blocked\n\n"
+    "You have been blocked. If you believe this in error, please go to "
+    "support.indeed.com and reference the following information:\n"
+    "Your Ray ID for this request is 0123456789abcdef\n"
+    "Your current IP for this request is 203.0.113.7\n\n"
+    "[Return home →](https://www.indeed.com/)\n\n"
+    "[Troubleshooting Cloudflare Errors](https://www.indeed.com/help/cloudflare-errors)\n\n"
+    "Need more help?\n[Contact us](https://www.indeed.com/support/contact)"
+)
+
+
+def test_block_page_behind_inline_images_is_botwall():
+    """The Indeed repro: clears the length floor only because of the logos, and
+    the block phrase sits past the head window. Must be a BotWall, not a success."""
+    assert len(INDEED_BLOCK) > 2000
+    assert INDEED_BLOCK.lower().find("you have been blocked") > 600
+    with pytest.raises(BotWall) as ei:
+        check("https://www.indeed.com/career-advice/x", INDEED_BLOCK)
+    assert ei.value.vendor == "cloudflare"
+
+
+def test_cloudflare_waf_block_page_is_botwall():
+    """Cloudflare's stock WAF (1020) block page copy is a wall too."""
+    md = ("Attention Required\n\n# Sorry, you have been blocked\n\n"
+          "You are unable to access example.com\n\n") + ("filler text " * 200)
+    with pytest.raises(BotWall):
+        check(URL, md)
+
+
+def test_inline_images_do_not_count_toward_length_floor():
+    """A thin page padded past 2000 chars by a data-URI image is still short."""
+    md = f"# Title\n\n![]({_data_uri(5000)})\n\nA couple of real sentences only."
+    assert len(md) > 2000
+    with pytest.raises(ShortContent):
+        check(URL, md)
+
+
+def test_real_article_with_inline_images_passes_unchanged():
+    """A real article that embeds data-URI images still clears the gate, and the
+    returned markdown is byte-for-byte what came in (images kept)."""
+    md = f"# A Real Story\n\n![chart]({_data_uri(4000)})\n\n" + REAL_SHORT
+    assert check(URL, md) == md
+
+
+def test_block_phrase_deep_in_article_body_passes():
+    """Head-only scan is preserved: an article that merely *mentions* the phrase
+    far down its body is not a wall."""
+    md = REAL_SHORT + "\nOne reader wrote in: 'you have been blocked' was all I saw.\n"
+    assert check(URL, md) == md

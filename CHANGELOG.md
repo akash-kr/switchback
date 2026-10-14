@@ -65,6 +65,16 @@ versioning while pre-1.0.
 The new extras are deliberately not added to `[all]`, so upgrading an existing
 `[all]` install pulls no new dependencies.
 
+### Fixed
+- **Block pages hidden behind inline images were returned as successes.** A
+  bot-wall page that embeds its logo as a base64 `data:` image (e.g. Indeed's
+  Cloudflare block page, ~7k chars of SVG before "You have been blocked") pushed
+  the block phrase past the 600-char head scan *and* cleared the 2000-char length
+  floor on image bytes alone, so a browser tier reported `OK` with the block page
+  as content. The quality gates now ignore inline `data:` payloads when scanning
+  and measuring (returned markdown is unchanged), and Cloudflare's WAF copy "you
+  have been blocked" is a recognised wall (vendor `cloudflare`).
+
 ## [0.5.0] - 2026-06-30
 
 ### Changed
