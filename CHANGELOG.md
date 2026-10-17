@@ -4,6 +4,17 @@ All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses semantic-ish
 versioning while pre-1.0.
 
+## [0.7.0] - 2026-10-17
+
+### Added
+- **Opt-in log retention: `SCRAPER_BOTWALL_LOG_RETENTION_DAYS`.** The botwall
+  audit logs (`botwall_events.jsonl`, `botwall_excluded.jsonl`,
+  `botwall_excluded.log`) only ever grew. Set this to N > 0 to keep the last N
+  days: the logging path trims them at most once an hour per process, streaming
+  through a temp file and `os.replace` that keeps the file's permissions. Lines without a
+  readable timestamp are kept, and a failed trim only logs a warning. The
+  default 0 keeps everything, as before; `botwall_db.json` is never trimmed.
+
 ## [0.6.3] - 2026-10-14
 
 ### Fixed
