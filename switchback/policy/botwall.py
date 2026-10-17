@@ -24,6 +24,7 @@ import json
 import logging
 import os
 import threading
+import time
 from datetime import datetime, timezone
 
 from .gates import host_of
@@ -69,6 +70,11 @@ SEED_HOSTS = {
 #   When true, each time Firecrawl is invoked for a host it counts as a failure
 #   toward the domain skip threshold (original v1 behaviour). No effect if
 #   SCRAPER_BOTWALL_DOMAIN_SKIP_AFTER is 0.
+#
+# SCRAPER_BOTWALL_LOG_RETENTION_DAYS  int  ≥0, default 0 (keep everything)
+#   When >0, botwall_events.jsonl, botwall_excluded.jsonl and botwall_excluded.log
+#   are trimmed to the last N days, at most once an hour per process. Lines
+#   without a readable timestamp are kept. botwall_db.json is never trimmed.
 
 def _int_env(name: str, default: int) -> int:
     try:
@@ -91,6 +97,10 @@ URL_SKIP_COOLDOWN_H  = _int_env("SCRAPER_BOTWALL_URL_SKIP_COOLDOWN_H", 24)
 # *local* tiers, the host is flagged needs_egress so future attempts route to the
 # residential tier. 0 disables escalation.
 PROMOTE_EGRESS_AFTER = _int_env("SCRAPER_BOTWALL_EGRESS_AFTER", 2)
+
+LOG_RETENTION_DAYS   = _int_env("SCRAPER_BOTWALL_LOG_RETENTION_DAYS", 0)
+_LOG_LOCK = threading.Lock()  # appends vs. the trim's rewrite, within this process
+_last_trim = 0.0
 
 # Outcomes a *single URL* is excluded for (deterministic per-URL failures). A 429
 # is deliberately excluded — it's transient, so it escalates egress but never
@@ -247,10 +257,50 @@ def _log_event(url, tier, outcome, md_len=None, error=None, latency_ms=None,
           "outcome": outcome, "md_len": md_len, "latency_ms": latency_ms,
           "error": error, "status_code": status_code, "challenge": challenge}
     try:
-        with open(EVENTS_PATH, "a") as f:
-            f.write(json.dumps(ev) + "\n")
+        with _LOG_LOCK:
+            with open(EVENTS_PATH, "a") as f:
+                f.write(json.dumps(ev) + "\n")
+            _maybe_trim_logs()
     except Exception as e:
         logger.warning(f"botwall: event log failed: {e}")
+
+
+def _line_ts(line: str):
+    """A log line's timestamp: JSON `ts`, else the first token (.log lines)."""
+    try:
+        return json.loads(line)["ts"]
+    except Exception:
+        parts = line.split(None, 1)
+        return parts[0] if parts else None
+
+
+def _maybe_trim_logs() -> None:
+    """Drop log lines older than LOG_RETENTION_DAYS. Caller holds _LOG_LOCK.
+
+    shortcut: another process appending during the os.replace loses that line;
+    fine for an audit log, use a file lock if several processes share a state dir."""
+    global _last_trim
+    if LOG_RETENTION_DAYS <= 0 or time.time() - _last_trim < 3600:
+        return
+    _last_trim = time.time()
+    max_age = LOG_RETENTION_DAYS * 86400
+    for path in (EVENTS_PATH, EXCLUDED_JSONL, EXCLUDED_LOG):
+        try:
+            if not os.path.exists(path):
+                continue
+            with open(path) as f:
+                lines = f.readlines()
+            keep = [ln for ln in lines
+                    if (age := _age_seconds(_line_ts(ln))) is None or age < max_age]
+            if len(keep) == len(lines):
+                continue
+            tmp = f"{path}.tmp.{os.getpid()}"
+            with open(tmp, "w") as f:
+                f.writelines(keep)
+            os.chmod(tmp, os.stat(path).st_mode & 0o7777)
+            os.replace(tmp, path)
+        except Exception as e:
+            logger.warning(f"botwall: log trim failed for {path}: {e}")
 
 
 def log_final(url: str, outcome: str, latency_ms=None, error=None,
@@ -283,10 +333,12 @@ def _log_exclusion(url: str, reason: str) -> None:
     """Write to both the structured JSONL and the human-readable log."""
     ev = {"ts": _now(), "url": url, "host": host_of(url), "reason": reason}
     try:
-        with open(EXCLUDED_JSONL, "a") as f:
-            f.write(json.dumps(ev) + "\n")
-        with open(EXCLUDED_LOG, "a") as f:
-            f.write(f"{ev['ts']}  EXCLUDED  {url}  [{reason}]\n")
+        with _LOG_LOCK:
+            with open(EXCLUDED_JSONL, "a") as f:
+                f.write(json.dumps(ev) + "\n")
+            with open(EXCLUDED_LOG, "a") as f:
+                f.write(f"{ev['ts']}  EXCLUDED  {url}  [{reason}]\n")
+            _maybe_trim_logs()
     except Exception as e:
         logger.warning(f"botwall: exclusion log failed: {e}")
 

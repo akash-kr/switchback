@@ -349,6 +349,7 @@ export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
 - `SCRAPER_BROWSER_CONCURRENCY` — max simultaneous headless browsers (default 1)
 - `SCRAPER_BOTWALL_URL_SKIP_COOLDOWN_H` — auto-skip re-test window (24h; 0 = never)
 - `SCRAPER_BOTWALL_EGRESS_AFTER` — local-tier failures before a host escalates to the residential tier (default 2)
+- `SCRAPER_BOTWALL_LOG_RETENTION_DAYS` — keep only the last N days of `botwall_events.jsonl` / `botwall_excluded.jsonl` / `botwall_excluded.log`, trimmed at most hourly (**0 = keep everything**, the default)
 - `SCRAPER_SESSION_TTL_S` — cf_clearance reuse window (1800s)
 - `SCRAPER_DISABLE_SESSION_CACHE` — turn off cf_clearance reuse
 - `SCRAPER_CONTENT_TTL_S` — URL→result cache TTL (**0 = off**; set e.g. 86400 to skip re-scraping a page within a day)
