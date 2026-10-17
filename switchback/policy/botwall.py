@@ -285,22 +285,27 @@ def _maybe_trim_logs() -> None:
     _last_trim = time.time()
     max_age = LOG_RETENTION_DAYS * 86400
     for path in (EVENTS_PATH, EXCLUDED_JSONL, EXCLUDED_LOG):
+        tmp = f"{path}.tmp.{os.getpid()}"
         try:
             if not os.path.exists(path):
                 continue
-            with open(path) as f:
-                lines = f.readlines()
-            keep = [ln for ln in lines
-                    if (age := _age_seconds(_line_ts(ln))) is None or age < max_age]
-            if len(keep) == len(lines):
+            dropped = 0
+            # Streamed line by line: a log that only ever grew can be far larger than memory.
+            with open(path) as src, open(tmp, "w") as dst:
+                for ln in src:
+                    if (age := _age_seconds(_line_ts(ln))) is None or age < max_age:
+                        dst.write(ln)
+                    else:
+                        dropped += 1
+            if not dropped:
+                os.unlink(tmp)
                 continue
-            tmp = f"{path}.tmp.{os.getpid()}"
-            with open(tmp, "w") as f:
-                f.writelines(keep)
             os.chmod(tmp, os.stat(path).st_mode & 0o7777)
             os.replace(tmp, path)
         except Exception as e:
             logger.warning(f"botwall: log trim failed for {path}: {e}")
+            if os.path.exists(tmp):
+                os.unlink(tmp)
 
 
 def log_final(url: str, outcome: str, latency_ms=None, error=None,
